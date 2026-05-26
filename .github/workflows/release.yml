@@ -127,7 +127,7 @@ jobs:
           4. 在 Windows 端选择设备连接即可
 
           ---
-          [完整更新日志](https://github.com/HeHang0/AudioShare/blob/master/最终项目完成报告.md)
+          [完整更新日志](https://github.com/Kezry/OpenAudioShare/blob/master/最终项目完成报告.md)
           "@ | Out-File -FilePath release_notes.md -Encoding UTF8
 
       - name: Create Release

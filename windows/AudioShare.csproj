@@ -8,8 +8,8 @@
     <Company>HeHang</Company>
     <Description>AudioShare For Windows</Description>
     <Copyright>Copyright ©  2023</Copyright>
-    <PackageProjectUrl>https://github.com/HeHang0/AudioShare</PackageProjectUrl>
-    <RepositoryUrl>https://github.com/HeHang0/AudioShare</RepositoryUrl>
+    <PackageProjectUrl>https://github.com/Kezry/OpenAudioShare</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/Kezry/OpenAudioShare</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <Product>AudioShare</Product>
     <Authors>HeHang</Authors>

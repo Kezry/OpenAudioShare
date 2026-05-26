@@ -1,6 +1,6 @@
 # AudioShare - 将 Windows 音频实时分享到安卓设备
 
-[![image](https://img.shields.io/github/v/release/hehang0/AudioShare.svg?label=latest)](https://github.com/HeHang0/AudioShare/releases)
+[![image](https://img.shields.io/github/v/release/Kezry/OpenAudioShare.svg?label=latest)](https://github.com/Kezry/OpenAudioShare/releases)
 
 [English](./README.en.md) | 简体中文
 
@@ -18,7 +18,7 @@ AudioShare 是一款可以让您将 Windows 电脑的声音实时传输到安卓
 
 ### Windows 端
 
-1. 从 [Release页面](https://github.com/HeHang0/AudioShare/releases/latest) 下载 AudioShare.exe、AudioShare.apk、adb.exe、AdbWinApi.dll、AdbWinUsbApi.dll（如果仅用于wifi连接或已经安装adb可忽略后面三个adb相关文件）。
+1. 从 [Release页面](https://github.com/Kezry/OpenAudioShare/releases/latest) 下载 AudioShare.exe、AudioShare.apk、adb.exe、AdbWinApi.dll、AdbWinUsbApi.dll（如果仅用于wifi连接或已经安装adb可忽略后面三个adb相关文件）。
 2. 打开 AudioShare.exe 软件。
 3. 选择连接方式：
    + USB 连接: 将 Windows 电脑和安卓设备连接到同一根 USB 数据线。
@@ -50,7 +50,7 @@ AudioShare 是一款可以让您将 Windows 电脑的声音实时传输到安卓
 
 1. 访问Android app界面左上角上显示的远程管理地址，默认端口为8080（斐讯R1为8090）。
 2. 打开远程管理页面可在设置界面选择登录网易云、QQ、咪咕音乐账号来查看个人歌单。
-3. 详细介绍可见[Musiche项目](https://github.com/HeHang0/Musiche)。
+3. 详细介绍可见[Musiche项目](https://github.com/Kezry/Musiche)。
 
 ### 多机互联
 
@@ -61,6 +61,6 @@ AudioShare 是一款可以让您将 Windows 电脑的声音实时传输到安卓
 
 ### 下载
 
-+ [最新版本](https://github.com/HeHang0/AudioShare/releases/latest)
-+ [Windows v2.0.0](https://github.com/HeHang0/AudioShare/releases/download/v2.0.0/AudioShare.exe)
-+ [Android v2.0.0](https://github.com/HeHang0/AudioShare/releases/download/v2.0.0/AudioShare.apk)
++ [最新版本](https://github.com/Kezry/OpenAudioShare/releases/latest)
++ [Windows v2.0.0](https://github.com/Kezry/OpenAudioShare/releases/download/v2.0.0/AudioShare.exe)
++ [Android v2.0.0](https://github.com/Kezry/OpenAudioShare/releases/download/v2.0.0/AudioShare.apk)
