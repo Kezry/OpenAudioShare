@@ -417,7 +417,7 @@ namespace AudioShare
                     // 检查连接是否中断
                     if (bytesRead == 0)
                     {
-                        Logger.Warn($"Connection lost for {_id}, triggering reconnect");
+                        Logger.Warning($"Connection lost for {_id}, triggering reconnect");
                         await HandleConnectionLoss();
                         return;
                     }
@@ -1151,7 +1151,7 @@ namespace AudioShare
                             bool connectionAlive = await TestConnectionAlive();
                             if (!connectionAlive)
                             {
-                                Logger.Warn($"Connection health check failed for {_id}");
+                                Logger.Warning($"Connection health check failed for {_id}");
                                 await HandleConnectionLoss();
                                 return;
                             }
@@ -1261,7 +1261,7 @@ namespace AudioShare
                     Logger.Info($"Standard sync mode for {_id}: ±20ms tolerance");
                     break;
                 case SyncMode.Degraded:
-                    Logger.Warn($"Degraded sync mode for {_id}: ±50ms tolerance");
+                    Logger.Warning($"Degraded sync mode for {_id}: ±50ms tolerance");
                     break;
                 case SyncMode.Emergency:
                     Logger.Error($"Emergency sync mode for {_id}: ±100ms tolerance");
@@ -1323,7 +1323,7 @@ namespace AudioShare
 
                     if (CheckTimeout())
                     {
-                        Logger.Warn($"Timeout detected for {_id}, last communication: {(DateTime.Now - _lastSuccessfulCommunication).TotalSeconds}s ago");
+                        Logger.Warning($"Timeout detected for {_id}, last communication: {(DateTime.Now - _lastSuccessfulCommunication).TotalSeconds}s ago");
                         await HandleTimeout();
                         return;
                     }
@@ -1338,7 +1338,7 @@ namespace AudioShare
 
         private async Task HandleTimeout()
         {
-            Logger.Warn($"Handling timeout for {_id}");
+            Logger.Warning($"Handling timeout for {_id}");
 
             // 检查连接是否还活跃
             bool connectionAlive = await TestConnectionAlive();

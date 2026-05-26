@@ -689,7 +689,7 @@ namespace AudioShare
         }
 
         // 定期重新同步延迟
-        private async void PeriodicLatencyResynchronization()
+        private async Task PeriodicLatencyResynchronization()
         {
             List<Speaker> connectedSpeakers = Speakers.Where(speaker => speaker.Connected).ToList();
             if (connectedSpeakers.Count < 2) return;
