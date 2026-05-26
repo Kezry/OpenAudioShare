@@ -641,7 +641,7 @@ namespace AudioShare
         }
 
         // 最大延迟同步策略
-        private async void ApplyMaxLatencySynchronization(List<Speaker> connectedSpeakers)
+        private async Task ApplyMaxLatencySynchronization(List<Speaker> connectedSpeakers)
         {
             if (connectedSpeakers.Count < 2) return; // 只有多设备时才需要同步
 
