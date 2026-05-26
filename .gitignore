@@ -1,1 +1,35 @@
+# Visual Studio Code
 .vscode
+
+# IntelliJ IDEA
+.idea/
+*.iml
+*.iws
+*.ipr
+out/
+
+# Android Studio specific
+*.apk
+*.ap_
+*.dex
+*.class
+local.properties
+.DS_Store
+build/
+captures/
+.externalNativeBuild
+.cxx
+
+# Gradle
+.gradle/
+build/
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride

@@ -40,10 +40,8 @@ public class MainActivity extends AppCompatActivity {
     private String versionName;
     private SwitchCompat connectionSwitch;
     private TextView connectionText;
-    private final TcpService.MessageListener messageListener = () -> {
-        setConnectionStatus();
-        setListenStatus();
-    };
+    private TextView syncStatusText;
+    private TextView syncQualityText;
 
     private final ServiceConnection connection = new ServiceConnection() {
         @Override
@@ -75,6 +73,8 @@ public class MainActivity extends AppCompatActivity {
         managerText = findViewById(R.id.managerText);
         connectionSwitch = findViewById(R.id.connectionSwitch);
         connectionText = findViewById(R.id.connectionText);
+        syncStatusText = findViewById(R.id.syncStatusText);
+        syncQualityText = findViewById(R.id.syncQualityText);
         Intent intent = new Intent(this, TcpService.class);
         startService(intent);
         bindService(intent, connection, Context.BIND_AUTO_CREATE);
@@ -205,4 +205,57 @@ public class MainActivity extends AppCompatActivity {
                         Configuration.UI_MODE_NIGHT_MASK;
         return nightModeFlags == Configuration.UI_MODE_NIGHT_YES;
     }
-}
+
+    // 更新同步状态显示
+    private void updateSyncStatus() {
+        if(tcpService == null) return;
+
+        runOnUiThread(() -> {
+            boolean playing = tcpService.getPlaying();
+            if(playing) {
+                syncStatusText.setText("✅ 已连接 - 同步中");
+                syncStatusText.setTextColor(Color.parseColor("#4CAF50")); // 绿色
+
+                // 获取质量评分
+                int qualityScore = tcpService.getOverallQualityScore();
+                String qualityText = getQualityDescription(qualityScore);
+                syncQualityText.setText(qualityText);
+            } else {
+                syncStatusText.setText("⚪ 未连接");
+                syncStatusText.setTextColor(Color.parseColor("#CCCCCC"));
+                syncQualityText.setText("");
+            }
+        });
+    }
+
+    private String getQualityDescription(int score) {
+        if(score >= 80) {
+            return "🟢 优秀 - " + score + "/100";
+        } else if(score >= 60) {
+            return "🟡 良好 - " + score + "/100";
+        } else if(score >= 40) {
+            return "🟠 一般 - " + score + "/100";
+        } else {
+            return "🔴 较差 - " + score + "/100";
+        }
+    }
+
+    // 修改连接状态更新方法，同时更新同步状态
+    private void setConnectionStatus(){
+        if(tcpService == null) return;
+        runOnUiThread(() -> {
+            boolean playing = tcpService.getPlaying();
+            connectionText.setText(playing ? R.string.connected : R.string.unconnected);
+            connectionSwitch.setChecked(playing);
+
+            // 同时更新同步状态
+            updateSyncStatus();
+        });
+    }
+
+    // 修改监听状态设置，添加同步状态更新
+    private final TcpService.MessageListener enhancedMessageListener = () -> {
+        setConnectionStatus();
+        setListenStatus();
+        updateSyncStatus(); // 额外的同步状态更新
+    };
