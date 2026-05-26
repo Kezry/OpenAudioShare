@@ -1051,7 +1051,7 @@ public class TcpService extends NotificationService {
     }
 
     // 综合质量评分
-    private int getOverallQualityScore() {
+    public int getOverallQualityScore() {
         // 基于延迟、缓冲区使用情况等计算质量评分
         long avgLatency = latencyHistory.isEmpty() ? 100 : calculateAverageLatency();
         int bufferUsage = getAverageBufferUsage();
@@ -1065,7 +1065,7 @@ public class TcpService extends NotificationService {
         int bufferScore = 100 - Math.abs(bufferUsage - 50) * 2;
 
         // 综合评分
-        int totalScore = latencyScore * 0.4f + bufferScore * 0.4f - underrunImpact - overrunImpact;
+        int totalScore = (int)(latencyScore * 0.4f + bufferScore * 0.4f - underrunImpact - overrunImpact);
 
         return Math.max(0, Math.min(100, totalScore));
     }

@@ -50,7 +50,7 @@ public class MainActivity extends AppCompatActivity {
             tcpService = binder.getService();
             tcpService.setAudioManager((AudioManager) getSystemService(Context.AUDIO_SERVICE));
             tcpService.setVersionName(versionName);
-            tcpService.setMessageListener(messageListener);
+            tcpService.setMessageListener(enhancedMessageListener);
             isBound = true;
             setConnectionStatus();
             setListenStatus();
