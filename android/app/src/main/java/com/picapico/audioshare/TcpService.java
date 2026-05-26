@@ -673,12 +673,14 @@ public class TcpService extends NotificationService {
                 setWriting(true);
                 final int finalBufferSize = bufferSizeInFrames;
                 final int finalBufferLevel = bufferLevel;
+                final byte[] finalBufferCopy = finalBuffer;
+                final int finalDataLengthCopy = finalDataLength;
                 mExecutorService.execute(() -> {
-                    int code = mAudioTrack.write(finalBuffer, 0, finalDataLength);
+                    int code = mAudioTrack.write(finalBufferCopy, 0, finalDataLengthCopy);
 
                     // 每100次写入打印一次状态信息
                     if(audioDataCount % 100 == 0) {
-                        Log.i(TAG, "Audio write: " + finalDataLength + " bytes, code: " + code +
+                        Log.i(TAG, "Audio write: " + finalDataLengthCopy + " bytes, code: " + code +
                               ", buffer level: " + finalBufferLevel + "/" + finalBufferSize);
                     }
 
