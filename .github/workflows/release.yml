@@ -69,11 +69,6 @@ jobs:
           cd windows
           msbuild AudioShare.sln -t:"Restore;Build" /p:Configuration=Release /p:Platform="Any CPU" /p:TargetFramework=net462
 
-      - name: Publish Windows (.NET 6.0 Self-Contained)
-        run: |
-          cd windows
-          msbuild AudioShare.sln -t:"Restore;Publish" /p:Configuration=Release /p:Platform="Any CPU" /p:PublishProfile="Properties\PublishProfiles\net6.0.pubxml" /p:TargetFramework=net6.0-windows10.0.17763.0
-
       - name: Build Android APK
         run: |
           cd android
@@ -84,7 +79,6 @@ jobs:
           mkdir release
           # Windows files
           copy windows\bin\Release\net462\AudioShare.exe release\AudioShare.exe
-          copy windows\bin\Publish\net6.0-windows\AudioShare.exe release\AudioShare.net6.exe
           # Android file
           copy android\app\build\outputs\apk\release\app-release.apk release\AudioShare.apk
 
@@ -119,8 +113,7 @@ jobs:
           - ⚡ 性能优化（CPU<3%, 内存<15MB）
 
           ### 下载说明
-          - **AudioShare.exe**: Windows .NET Framework 4.6.2 版本（兼容性更好）
-          - **AudioShare.net6.exe**: Windows .NET 6.0 版本（推荐使用）
+          - **AudioShare.exe**: Windows 版本（需要 .NET Framework 4.6.2+，Win10/11 自带）
           - **AudioShare.apk**: Android 安装包（需要 Android 5.0+）
           - **adb.exe**: ADB 工具（USB 连接需要，可选）
 
@@ -140,7 +133,6 @@ jobs:
           body_path: release_notes.md
           files: |
             release/AudioShare.exe
-            release/AudioShare.net6.exe
             release/AudioShare.apk
             release/adb.exe
             release/AdbWinApi.dll
