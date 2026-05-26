@@ -59,16 +59,20 @@ jobs:
         run: |
           copy musiche\web\dist android\app\src\main\assets -Recurse
 
-      - name: Build Windows (.NET 6.0)
+      - name: Create FodyWeavers.xml
         run: |
           cd windows
           echo "<Weavers><Costura/></Weavers>" > FodyWeavers.xml
-          msbuild AudioShare.sln -t:"Restore;Build;Publish" /p:Configuration=Release /p:Platform="Any CPU" /p:PublishProfile="Properties\PublishProfiles\net6.0.pubxml" /p:TargetFramework=net6.0-windows10.0.17763.0
 
-      - name: Build Windows (.NET Framework)
+      - name: Build Windows (.NET Framework 4.6.2)
         run: |
           cd windows
           msbuild AudioShare.sln -t:"Restore;Build" /p:Configuration=Release /p:Platform="Any CPU" /p:TargetFramework=net462
+
+      - name: Publish Windows (.NET 6.0 Self-Contained)
+        run: |
+          cd windows
+          msbuild AudioShare.sln -t:"Restore;Publish" /p:Configuration=Release /p:Platform="Any CPU" /p:PublishProfile="Properties\PublishProfiles\net6.0.pubxml" /p:TargetFramework=net6.0-windows10.0.17763.0
 
       - name: Build Android APK
         run: |
