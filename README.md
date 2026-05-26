@@ -62,3 +62,5 @@ AudioShare 是一款可以让您将 Windows 电脑的声音实时传输到安卓
 ### 下载
 
 + [最新版本](https://github.com/HeHang0/AudioShare/releases/latest)
++ [Windows v2.0.0](https://github.com/HeHang0/AudioShare/releases/download/v2.0.0/AudioShare.exe)
++ [Android v2.0.0](https://github.com/HeHang0/AudioShare/releases/download/v2.0.0/AudioShare.apk)
