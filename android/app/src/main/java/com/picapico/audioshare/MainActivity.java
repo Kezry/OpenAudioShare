@@ -125,15 +125,6 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    private void setConnectionStatus(){
-        if(tcpService == null) return;
-        runOnUiThread(() -> {
-            boolean playing = tcpService.getPlaying();
-            connectionText.setText(playing ? R.string.connected : R.string.unconnected);
-            connectionSwitch.setChecked(playing);
-        });
-    }
-
     @SuppressLint("SetTextI18n")
     private void setListenStatus(){
         if(tcpService == null) return;
@@ -259,3 +250,4 @@ public class MainActivity extends AppCompatActivity {
         setListenStatus();
         updateSyncStatus(); // 额外的同步状态更新
     };
+}
