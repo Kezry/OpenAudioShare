@@ -45,8 +45,6 @@ import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.Timer;
 import java.util.TimerTask;
-import java.util.Queue;
-import java.util.LinkedList;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -70,39 +68,6 @@ public class TcpService extends NotificationService {
     private final Handler mHandler = new Handler(Looper.getMainLooper());
     private HttpServer httpServer;
     private SharedPreferences mSharedPreferences;
-
-    // 音频同步相关字段
-    private long audioDataCount = 0;
-    private long baseTimestamp = 0;
-    private long deviceLatency = 0; // 设备延迟（毫秒）
-    private long maxLatencyOffset = 200; // 最大延迟偏移量
-    private final java.util.Queue<Long> latencyHistory = new java.util.LinkedList<>(); // 延迟历史
-    private static final int LATENCY_HISTORY_SIZE = 100; // 延迟历史记录数量
-
-    // 自适应缓冲区管理相关字段
-    private int currentBufferSize = 0;
-    private int minBufferSize = 4096;
-    private int maxBufferSize = 32768;
-    private long bufferUnderrunCount = 0;
-    private long bufferOverrunCount = 0;
-    private final Queue<Integer> bufferUsageHistory = new java.util.LinkedList<>();
-    private static final int BUFFER_USAGE_HISTORY_SIZE = 50;
-
-    // 连接恢复相关字段
-    private int disconnectCount = 0;
-    private long lastDisconnectTime = 0;
-    private static final int MAX_RECONNECT_ATTEMPTS = 5;
-    private static final int RECONNECT_DELAY_MS = 2000;
-    private boolean autoReconnectEnabled = true;
-    private final Handler reconnectHandler = new Handler(Looper.getMainLooper());
-
-    // 优化的缓冲区动态调整相关字段
-    private int targetBufferSize = 0;
-    private int currentBufferSizeTrend = 0; // 1=增长, -1=缩小, 0=稳定
-    private static final int BUFFER_CHANGE_THRESHOLD = 3; // 连续多少次变化才调整
-    private int bufferChangeCount = 0;
-    private long lastBufferSizeChangeTime = 0;
-    private static final long BUFFER_CHANGE_COOLDOWN_MS = 5000; // 缓冲区调整冷却时间
     @Override
     public void onCreate() {
         super.onCreate();
@@ -184,20 +149,6 @@ public class TcpService extends NotificationService {
         return parseInt(buffer);
     }
 
-    private long readLong(InputStream stream) throws IOException {
-        byte[] buffer = new byte[8];
-        int offset = 0;
-        int bytesRead = 0;
-        while (offset < 8 &&
-                (bytesRead = stream.read(buffer, offset, 8 - offset)) != -1){
-            offset += bytesRead;
-        }
-        if(bytesRead < 0){
-            throw new IOException("read stream eol.");
-        }
-        return bytesToLong(buffer, 0);
-    }
-
     private int lastPCVolume = 1;
     private void processControlStream(byte command, InputStream stream) {
         if(command == 2){
@@ -209,15 +160,7 @@ public class TcpService extends NotificationService {
                 Log.e(TAG, "read volume error: " + e);
             }
         }else if(command == 3) {
-            try {
-                long serverTime = readLong(stream);
-                baseTimestamp = serverTime;
-                deviceLatency = System.currentTimeMillis() - serverTime;
-                PlayerVisualizer.updateTimeMillis();
-                Log.i(TAG, "Time synced. Server: " + serverTime + ", Device latency: " + deviceLatency + "ms");
-            } catch (IOException e) {
-                Log.e(TAG, "Time sync error: " + e);
-            }
+            PlayerVisualizer.updateTimeMillis();
         }else if(command == 4) {
             if(getPlaying() && getPlayerCloser() != null){
                 try {
@@ -232,62 +175,6 @@ public class TcpService extends NotificationService {
                     } catch (InterruptedException ignored) {
                     }
                 }
-            }
-        }else if(command == 5) { // MeasureLatency - 延迟测量
-            try {
-                int sequence = readInt(stream);
-                // 立即发送响应
-                if(mSocketOutputStream != null) {
-                    mSocketOutputStream.write(1); // 简单确认
-                    mSocketOutputStream.flush();
-                }
-                Log.i(TAG, "Latency measurement response sent, sequence: " + sequence);
-            } catch (IOException e) {
-                Log.e(TAG, "Measure latency error: " + e);
-            }
-        }else if(command == 6) { // SetDelay - 设置播放延迟
-            try {
-                int delayMs = readInt(stream);
-                // 这里可以应用播放延迟设置
-                // 简化处理：记录延迟值供播放时使用
-                Log.i(TAG, "Playback delay set to: " + delayMs + "ms");
-                // 可以将延迟值存储到SharedPreferences中
-                SharedPreferences prefs = getSharedPreferences("sync_config", Context.MODE_PRIVATE);
-                prefs.edit().putInt("playback_delay", delayMs).apply();
-            } catch (IOException e) {
-                Log.e(TAG, "Set delay error: " + e);
-            }
-        }else if(command == 7) { // SyncStatus - 同步状态查询
-            try {
-                // 返回同步状态信息
-                int avgLatency = (int)(latencyHistory.isEmpty() ? 0 : calculateAverageLatency());
-                int bufferSize = currentBufferSize;
-                int qualityScore = getOverallQualityScore();
-
-                Log.i(TAG, "Sync status: avgLatency=" + avgLatency + "ms, bufferSize=" + bufferSize + ", quality=" + qualityScore);
-
-                if(mSocketOutputStream != null) {
-                    mSocketOutputStream.write(qualityScore);
-                    mSocketOutputStream.flush();
-                }
-            } catch (IOException e) {
-                Log.e(TAG, "Get sync status error: " + e);
-            }
-        }else if(command == 8) { // ResendPacket - 重传数据包
-            try {
-                int sequence = readInt(stream);
-                Log.w(TAG, "Received retransmit request for packet: " + sequence);
-
-                // 简单处理：发送确认，实际应用中可能需要缓存重传
-                if(mSocketOutputStream != null) {
-                    mSocketOutputStream.write(1); // 确认重传请求
-                    mSocketOutputStream.flush();
-                }
-
-                // 在实际应用中，这里应该重新发送指定的数据包
-                // 由于音频数据是实时的，重传可能意义不大，更多是静音处理
-            } catch (IOException e) {
-                Log.e(TAG, "Resend packet error: " + e);
             }
         }
     }
@@ -546,15 +433,6 @@ public class TcpService extends NotificationService {
                     bufferSizeInBytes,
                     AudioTrack.MODE_STREAM,
                     AudioManager.AUDIO_SESSION_ID_GENERATE);
-
-            // 初始化自适应缓冲区管理
-            currentBufferSize = bufferSizeInBytes;
-            minBufferSize = bufferSizeInBytes / 2;
-            maxBufferSize = bufferSizeInBytes * 4;
-            bufferUnderrunCount = 0;
-            bufferOverrunCount = 0;
-            bufferUsageHistory.clear();
-
             setVolume(0);
             byte[] buffer = new byte[bufferSizeInBytes];
             int dataLength;
@@ -566,8 +444,6 @@ public class TcpService extends NotificationService {
             mSocketOutputStream = outputStream;
             DataInputStream stream = new DataInputStream(inputStream);
             setWriting(false);
-            byte[] finalBuffer;
-            int finalDataLength;
             while (true) {
                 try {
                     stream.readFully(buffer, 0, 4);
@@ -580,18 +456,8 @@ public class TcpService extends NotificationService {
                         buffer = new byte[dataLength];
                     }
                     stream.readFully(buffer, 0, dataLength);
-                    finalBuffer = buffer;
-                    finalDataLength = dataLength;
                 } catch (Exception e){
-                    // 读取异常，可能是连接中断
-                    if(getPlaying()) {
-                        Log.w(TAG, "Audio data read exception, possible packet loss: " + e);
-                        // 在重连之前使用静音
-                        finalBuffer = new byte[bufferSizeInBytes / 2]; // 静音数据
-                        finalDataLength = finalBuffer.length;
-                    } else {
-                        break;
-                    }
+                    break;
                 }
                 if(getWriting()) {
                     Log.w(TAG, "write audio busy");
@@ -602,48 +468,11 @@ public class TcpService extends NotificationService {
                     Log.w(TAG, "write audio playing");
                     continue;
                 }
-
-                // 检查AudioTrack缓冲区状态
-                int bufferSizeInFrames = mAudioTrack.getBufferSizeInFrames() / 2; // 估算
-                if(bufferSizeInFrames <= 0) bufferSizeInFrames = bufferSizeInBytes / 2;
-                int currentPosition = mAudioTrack.getPlaybackHeadPosition();
-                int bufferLevel = (currentPosition % bufferSizeInFrames);
-
-                // 更新缓冲区使用情况历史
-                updateBufferUsageHistory(bufferLevel, bufferSizeInFrames);
-
-                // 自适应缓冲区管理
-                BufferManagementResult managementResult = manageBufferSize(bufferLevel, bufferSizeInFrames);
-
-                if(managementResult.action == BufferAction.WAIT) {
-                    try {
-                        Thread.sleep(managementResult.delayMs);
-                    } catch (InterruptedException e) {
-                        Thread.currentThread().interrupt();
-                    }
-                    continue;
-                } else if(managementResult.action == BufferAction.UNDERRUN) {
-                    bufferUnderrunCount++;
-                    Log.w(TAG, "Buffer underrun detected, count: " + bufferUnderrunCount);
-                } else if(managementResult.action == BufferAction.OVERRUN) {
-                    bufferOverrunCount++;
-                    Log.w(TAG, "Buffer overrun detected, count: " + bufferOverrunCount);
-                }
-
+                byte[] finalBuffer = buffer;
+                int finalDataLength = dataLength;
                 setWriting(true);
-                final int finalBufferSize = bufferSizeInFrames;
-                final int finalBufferLevel = bufferLevel;
-                final byte[] finalBufferCopy = finalBuffer;
-                final int finalDataLengthCopy = finalDataLength;
                 mExecutorService.execute(() -> {
-                    int code = mAudioTrack.write(finalBufferCopy, 0, finalDataLengthCopy);
-
-                    // 每100次写入打印一次状态信息
-                    if(audioDataCount % 100 == 0) {
-                        Log.i(TAG, "Audio write: " + finalDataLengthCopy + " bytes, code: " + code +
-                              ", buffer level: " + finalBufferLevel + "/" + finalBufferSize);
-                    }
-
+                    int code = mAudioTrack.write(finalBuffer, 0, finalDataLength);
                     mAudioTrack.flush();
                     mHandler.post(() -> setWriting(false));
                     if(code < 0) {
@@ -790,324 +619,6 @@ public class TcpService extends NotificationService {
                 ((data[1] & 0xFF) << 8) |
                 ((data[2] & 0xFF) << 16) |
                 ((data[3] & 0xFF) << 24);
-    }
-
-    private long bytesToLong(byte[] data, int offset) {
-        return ((long)data[offset] & 0xFF) |
-                (((long)data[offset + 1] & 0xFF) << 8) |
-                (((long)data[offset + 2] & 0xFF) << 16) |
-                (((long)data[offset + 3] & 0xFF) << 24) |
-                (((long)data[offset + 4] & 0xFF) << 32) |
-                (((long)data[offset + 5] & 0xFF) << 40) |
-                (((long)data[offset + 6] & 0xFF) << 48) |
-                (((long)data[offset + 7] & 0xFF) << 56);
-    }
-
-    // 计算平均延迟
-    private long calculateAverageLatency() {
-        if(latencyHistory.isEmpty()) return 0;
-        long sum = 0;
-        for(Long latency : latencyHistory) {
-            sum += latency;
-        }
-        return sum / latencyHistory.size();
-    }
-
-    // 更新延迟历史
-    private void updateLatencyHistory(long latency) {
-        latencyHistory.offer(latency);
-        while(latencyHistory.size() > LATENCY_HISTORY_SIZE) {
-            latencyHistory.poll();
-        }
-    }
-
-    // 计算需要的播放延迟
-    private long calculatePlaybackDelay(long currentLatency) {
-        updateLatencyHistory(currentLatency);
-        long avgLatency = calculateAverageLatency();
-
-        // 如果延迟变化较大，增加缓冲延迟
-        long latencyVariance = Math.abs(currentLatency - avgLatency);
-        long bufferDelay = Math.min(latencyVariance * 2, 100); // 最大100ms额外缓冲
-
-        return avgLatency + bufferDelay;
-    }
-
-    // 自适应缓冲区管理相关类和方法
-    private enum BufferAction {
-        NORMAL,      // 正常播放
-        WAIT,        // 需要等待
-        UNDERRUN,    // 缓冲区下溢
-        OVERRUN,     // 缓冲区上溢
-        ADJUST       // 需要调整缓冲区大小
-    }
-
-    private static class BufferManagementResult {
-        BufferAction action;
-        int delayMs;
-
-        BufferManagementResult(BufferAction action, int delayMs) {
-            this.action = action;
-            this.delayMs = delayMs;
-        }
-    }
-
-    private void updateBufferUsageHistory(int bufferLevel, int bufferSize) {
-        if(bufferSize <= 0) return;
-        int usagePercentage = (bufferLevel * 100) / bufferSize;
-        bufferUsageHistory.offer(usagePercentage);
-        while(bufferUsageHistory.size() > BUFFER_USAGE_HISTORY_SIZE) {
-            bufferUsageHistory.poll();
-        }
-    }
-
-    private BufferManagementResult manageBufferSize(int bufferLevel, int bufferSize) {
-        if(bufferSize <= 0) return new BufferManagementResult(BufferAction.NORMAL, 0);
-        int usagePercentage = (bufferLevel * 100) / bufferSize;
-
-        // 检查缓冲区状态
-        if(usagePercentage < 10) {
-            // 缓冲区接近空，可能下溢
-            if(bufferUnderrunCount > 3) {
-                // 多次下溢，需要增加缓冲区
-                adjustBufferSize(true);
-                bufferUnderrunCount = 0;
-                return new BufferManagementResult(BufferAction.ADJUST, 0);
-            }
-            return new BufferManagementResult(BufferAction.UNDERRUN, 0);
-        } else if(usagePercentage > 90) {
-            // 缓冲区接近满，需要等待
-            if(bufferOverrunCount > 5) {
-                // 多次上溢，可以减少缓冲区
-                adjustBufferSize(false);
-                bufferOverrunCount = 0;
-            }
-            // 计算等待时间
-            int waitTime = (int)((usagePercentage - 80) * 0.5); // 最多50ms
-            return new BufferManagementResult(BufferAction.WAIT, waitTime);
-        } else if(usagePercentage > 80) {
-            // 缓冲区较满，稍微等待
-            int waitTime = (int)((usagePercentage - 80) * 0.3); // 最多30ms
-            return new BufferManagementResult(BufferAction.WAIT, waitTime);
-        }
-
-        // 正常范围，重置计数器
-        bufferUnderrunCount = 0;
-        bufferOverrunCount = 0;
-        return new BufferManagementResult(BufferAction.NORMAL, 0);
-    }
-
-    private void adjustBufferSize(boolean increase) {
-        // 检查冷却时间
-        long currentTime = System.currentTimeMillis();
-        if (currentTime - lastBufferSizeChangeTime < BUFFER_CHANGE_COOLDOWN_MS) {
-            Log.d(TAG, "Buffer size change in cooldown, skipping");
-            return;
-        }
-
-        // 记录变化趋势
-        int newTrend = increase ? 1 : -1;
-        if (newTrend == currentBufferSizeTrend) {
-            bufferChangeCount++;
-        } else {
-            bufferChangeCount = 1;
-            currentBufferSizeTrend = newTrend;
-        }
-
-        // 只有连续变化超过阈值才真正调整
-        if (bufferChangeCount >= BUFFER_CHANGE_THRESHOLD) {
-            int newSize = calculateOptimizedBufferSize(increase);
-            applyBufferSizeChange(newSize);
-            bufferChangeCount = 0;
-            lastBufferSizeChangeTime = currentTime;
-        } else {
-            Log.d(TAG, "Buffer change trend: " + (increase ? "increasing" : "decreasing") + " (" + bufferChangeCount + "/" + BUFFER_CHANGE_THRESHOLD + ")");
-        }
-    }
-
-    private int calculateOptimizedBufferSize(boolean increase) {
-        if (increase) {
-            // 渐进式增长，而不是翻倍
-            int increaseAmount = Math.max(currentBufferSize / 4, 1024);
-            return Math.min(currentBufferSize + increaseAmount, maxBufferSize);
-        } else {
-            // 渐进式缩小，而不是减半
-            int decreaseAmount = Math.max(currentBufferSize / 8, 512);
-            return Math.max(currentBufferSize - decreaseAmount, minBufferSize);
-        }
-    }
-
-    private void applyBufferSizeChange(int newSize) {
-        if (newSize != currentBufferSize) {
-            int oldSize = currentBufferSize;
-            currentBufferSize = newSize;
-            targetBufferSize = newSize;
-
-            Log.i(TAG, "Buffer size changed: " + oldSize + " -> " + newSize + " (trend: " + (currentBufferSizeTrend > 0 ? "increasing" : "decreasing") + ")");
-
-            // 根据新缓冲区大小调整写入策略
-            updateWriteStrategyForBufferSize(newSize);
-        }
-    }
-
-    private void updateWriteStrategyForBufferSize(int bufferSize) {
-        // 根据缓冲区大小调整写入策略
-        if (bufferSize <= 8192) {
-            // 小缓冲区：快速写入，低延迟
-            // 使用当前的直接写入策略
-        } else if (bufferSize <= 16384) {
-            // 中等缓冲区：平衡策略
-            // 可以添加一些小的延迟来平滑数据流
-        } else {
-            // 大缓冲区：保守策略，确保稳定
-            // 增加预读和批量处理
-        }
-    }
-
-    // 缓冲区健康状态监控
-    public BufferHealthStatus getBufferHealthStatus() {
-        int avgUsage = getAverageBufferUsage();
-        int usageVariance = calculateBufferUsageVariance();
-        long underrunRate = bufferUnderrunCount;
-        long overrunRate = bufferOverrunCount;
-
-        // 综合评估缓冲区健康状态
-        if (avgUsage < 10 || underrunRate > 5) {
-            return BufferHealthStatus.UNDERRUN;
-        } else if (avgUsage > 90 || overrunRate > 5) {
-            return BufferHealthStatus.OVERRUN;
-        } else if (usageVariance > 30) {
-            return BufferHealthStatus.UNSTABLE;
-        } else if (avgUsage >= 40 && avgUsage <= 60 && underrunRate == 0 && overrunRate == 0) {
-            return BufferHealthStatus.OPTIMAL;
-        } else {
-            return BufferHealthStatus.NORMAL;
-        }
-    }
-
-    private int calculateBufferUsageVariance() {
-        if (bufferUsageHistory.size() < 2) return 0;
-
-        int avg = getAverageBufferUsage();
-        int sum = 0;
-
-        for (Integer usage : bufferUsageHistory) {
-            sum += Math.abs(usage - avg);
-        }
-
-        return sum / bufferUsageHistory.size();
-    }
-
-    public enum BufferHealthStatus {
-        UNDERRUN,   // 缓冲区下溢
-        OVERRUN,    // 缓冲区上溢
-        UNSTABLE,   // 使用波动大
-        OPTIMAL,    // 最佳状态
-        NORMAL      // 正常状态
-    }
-
-    private int getAverageBufferUsage() {
-        if(bufferUsageHistory.isEmpty()) return 50;
-
-        int sum = 0;
-        for(Integer usage : bufferUsageHistory) {
-            sum += usage;
-        }
-        return sum / bufferUsageHistory.size();
-    }
-
-    // 综合质量评分
-    public int getOverallQualityScore() {
-        // 基于延迟、缓冲区使用情况等计算质量评分
-        long avgLatency = latencyHistory.isEmpty() ? 100 : calculateAverageLatency();
-        int bufferUsage = getAverageBufferUsage();
-        int underrunImpact = (int)(bufferUnderrunCount * 5);
-        int overrunImpact = (int)(bufferOverrunCount * 2);
-
-        // 延迟越低分数越高
-        int latencyScore = Math.max(0, 100 - (int)(avgLatency / 2));
-
-        // 缓冲区使用率在30-70%之间最好
-        int bufferScore = 100 - Math.abs(bufferUsage - 50) * 2;
-
-        // 综合评分
-        int totalScore = (int)(latencyScore * 0.4f + bufferScore * 0.4f - underrunImpact - overrunImpact);
-
-        return Math.max(0, Math.min(100, totalScore));
-    }
-
-    // 连接恢复相关方法
-    private void handleConnectionLoss() {
-        disconnectCount++;
-        lastDisconnectTime = System.currentTimeMillis();
-
-        if (autoReconnectEnabled && disconnectCount <= MAX_RECONNECT_ATTEMPTS) {
-            Log.i(TAG, "Attempting to reconnect (attempt " + disconnectCount + "/" + MAX_RECONNECT_ATTEMPTS + ")");
-
-            reconnectHandler.postDelayed(() -> {
-                try {
-                    // 尝试重新启动服务器
-                    if(serverSocket != null && !serverSocket.isClosed()) {
-                        serverSocket.close();
-                    }
-
-                    // 重新启动服务器
-                    new Thread(this::startServer).start();
-
-                    Log.i(TAG, "Reconnection attempt completed");
-                } catch (Exception e) {
-                    Log.e(TAG, "Reconnection failed: " + e);
-                    // 如果重连失败，继续尝试
-                    if(disconnectCount < MAX_RECONNECT_ATTEMPTS) {
-                        handleConnectionLoss();
-                    } else {
-                        Log.e(TAG, "Max reconnection attempts reached, giving up");
-                    }
-                }
-            }, RECONNECT_DELAY_MS);
-        } else {
-            Log.e(TAG, "Auto reconnect disabled or max attempts reached");
-        }
-    }
-
-    public void enableAutoReconnect(boolean enable) {
-        autoReconnectEnabled = enable;
-        Log.i(TAG, "Auto reconnect " + (enable ? "enabled" : "disabled"));
-    }
-
-    public int getDisconnectCount() {
-        return disconnectCount;
-    }
-
-    public long getTimeSinceLastDisconnect() {
-        return lastDisconnectTime == 0 ? 0 : System.currentTimeMillis() - lastDisconnectTime;
-    }
-
-    public boolean isAutoReconnectEnabled() {
-        return autoReconnectEnabled;
-    }
-
-    // 网络健康监控
-    private void monitorNetworkHealth() {
-        reconnectHandler.postDelayed(() -> {
-            if(getPlaying() && autoReconnectEnabled) {
-                try {
-                    // 检查连接是否还活跃
-                    if(mSocketOutputStream != null) {
-                        // 发送简单的ping
-                        mSocketOutputStream.write(0);
-                        mSocketOutputStream.flush();
-                    }
-                } catch (IOException e) {
-                    Log.w(TAG, "Network health check failed: " + e);
-                    handleConnectionLoss();
-                    return;
-                }
-
-                // 继续监控
-                monitorNetworkHealth();
-            }
-        }, 10000); // 每10秒检查一次
     }
 
     public class TcpBinder extends Binder {
