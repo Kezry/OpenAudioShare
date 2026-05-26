@@ -555,9 +555,6 @@ public class TcpService extends NotificationService {
             bufferOverrunCount = 0;
             bufferUsageHistory.clear();
 
-            // 启动网络健康监控
-            monitorNetworkHealth();
-
             setVolume(0);
             byte[] buffer = new byte[bufferSizeInBytes];
             int dataLength;
@@ -582,47 +579,9 @@ public class TcpService extends NotificationService {
                     if(dataLength > buffer.length) {
                         buffer = new byte[dataLength];
                     }
-                    // 读取完整数据包（包含时间戳和音频数据）
                     stream.readFully(buffer, 0, dataLength);
-
-                    // 解析时间戳（前8字节）
-                    if(dataLength >= 8) {
-                        long timestamp = bytesToLong(buffer, 0);
-                        int audioDataLength = dataLength - 8;
-                        // 计算延迟
-                        long currentTime = System.currentTimeMillis();
-                        long packetTime = timestamp;
-                        long latency = currentTime - packetTime;
-
-                        // 计算播放延迟补偿
-                        long playbackDelay = calculatePlaybackDelay(latency);
-
-                        // 每100个包打印一次延迟信息，避免日志过多
-                        if(audioDataCount % 100 == 0) {
-                            Log.i(TAG, "Audio packet latency: " + latency + "ms, playback delay: " + playbackDelay + "ms");
-                        }
-                        audioDataCount++;
-
-                        // 检测丢包：如果延迟异常大，可能是丢包导致的
-                        if(latency > maxLatencyOffset && audioDataCount > 10) {
-                            if(audioDataCount % 100 == 0) {
-                                Log.w(TAG, "High latency detected (possible packet loss): " + latency + "ms, using silence");
-                            }
-                            // 使用静音数据替代，避免播放噪音
-                            finalBuffer = new byte[audioDataLength]; // 全0数据（静音）
-                            finalDataLength = audioDataLength;
-                        } else {
-                            // 处理音频数据（跳过时间戳的8字节）
-                            byte[] audioData = new byte[audioDataLength];
-                            System.arraycopy(buffer, 8, audioData, 0, audioDataLength);
-                            finalBuffer = audioData;
-                            finalDataLength = audioDataLength;
-                        }
-                    } else {
-                        // 兼容旧格式（没有时间戳）
-                        finalBuffer = buffer;
-                        finalDataLength = dataLength;
-                    }
+                    finalBuffer = buffer;
+                    finalDataLength = dataLength;
                 } catch (Exception e){
                     // 读取异常，可能是连接中断
                     if(getPlaying()) {
@@ -646,6 +605,7 @@ public class TcpService extends NotificationService {
 
                 // 检查AudioTrack缓冲区状态
                 int bufferSizeInFrames = mAudioTrack.getBufferSizeInFrames() / 2; // 估算
+                if(bufferSizeInFrames <= 0) bufferSizeInFrames = bufferSizeInBytes / 2;
                 int currentPosition = mAudioTrack.getPlaybackHeadPosition();
                 int bufferLevel = (currentPosition % bufferSizeInFrames);
 
@@ -893,6 +853,7 @@ public class TcpService extends NotificationService {
     }
 
     private void updateBufferUsageHistory(int bufferLevel, int bufferSize) {
+        if(bufferSize <= 0) return;
         int usagePercentage = (bufferLevel * 100) / bufferSize;
         bufferUsageHistory.offer(usagePercentage);
         while(bufferUsageHistory.size() > BUFFER_USAGE_HISTORY_SIZE) {
@@ -901,6 +862,7 @@ public class TcpService extends NotificationService {
     }
 
     private BufferManagementResult manageBufferSize(int bufferLevel, int bufferSize) {
+        if(bufferSize <= 0) return new BufferManagementResult(BufferAction.NORMAL, 0);
         int usagePercentage = (bufferLevel * 100) / bufferSize;
 
         // 检查缓冲区状态

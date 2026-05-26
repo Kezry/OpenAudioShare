@@ -458,20 +458,11 @@ namespace AudioShare
             _packetSequence++;
             _totalPacketsSent++;
 
-            // 使用优化的方法获取时间戳和创建数据包
-            long timestamp = GetCurrentTimestampOptimized();
-            byte[] dataWithTimestamp = CreateOptimizedAudioPacket(e.Buffer, timestamp);
-
-            // 缓存数据包用于可能的重传
-            CachePacketForRetransmit(_packetSequence, dataWithTimestamp);
-
-            bool sendSuccess = await WriteTcp(dataWithTimestamp, TIMESTAMP_SIZE + e.BytesRecorded, true);
+            // 发送原始音频数据（保持向后兼容）
+            bool sendSuccess = await WriteTcp(e.Buffer, e.BytesRecorded, true);
 
             if (!sendSuccess)
             {
-                // 发送失败，视为丢包
-                HandlePacketLoss(_packetSequence);
-
                 if (!_retried && Connected)
                 {
                     _retried = true;
