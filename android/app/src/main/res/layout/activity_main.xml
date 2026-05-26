@@ -72,6 +72,17 @@
             android:clickable="false"
             android:gravity="center"/>
     </LinearLayout>
+    <TextView
+        android:id="@+id/latencyText"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="2dp"
+        android:layout_marginEnd="20dp"
+        android:textSize="10sp"
+        android:alpha="0.6"
+        android:visibility="gone"
+        app:layout_constraintTop_toBottomOf="@id/connection"
+        app:layout_constraintEnd_toEndOf="parent"/>
     <LinearLayout
         android:layout_width="0dp"
         android:layout_height="25dp"

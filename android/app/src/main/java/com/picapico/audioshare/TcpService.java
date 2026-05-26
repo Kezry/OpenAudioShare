@@ -68,6 +68,16 @@ public class TcpService extends NotificationService {
     private final Handler mHandler = new Handler(Looper.getMainLooper());
     private HttpServer httpServer;
     private SharedPreferences mSharedPreferences;
+    private volatile int playbackDelayMs = 0;
+
+    public int getPlaybackDelay() {
+        return playbackDelayMs;
+    }
+
+    private void setPlaybackDelay(int delayMs) {
+        playbackDelayMs = Math.max(0, Math.min(delayMs, 500));
+        Log.i(TAG, "Playback delay set to " + playbackDelayMs + "ms");
+    }
     @Override
     public void onCreate() {
         super.onCreate();
@@ -175,6 +185,15 @@ public class TcpService extends NotificationService {
                     } catch (InterruptedException ignored) {
                     }
                 }
+            }
+        }else if(command == 5) {
+            // MeasureLatency - no payload, ack is automatic via socket lifecycle
+        }else if(command == 6) {
+            try {
+                int delayMs = readInt(stream);
+                setPlaybackDelay(delayMs);
+            } catch (IOException e) {
+                Log.e(TAG, "read delay error: " + e);
             }
         }
     }
@@ -442,6 +461,9 @@ public class TcpService extends NotificationService {
             outputStream.write(new byte[1]);
             outputStream.flush();
             mSocketOutputStream = outputStream;
+            if(playbackDelayMs > 0) {
+                try { Thread.sleep(playbackDelayMs); } catch (InterruptedException ignored) {}
+            }
             DataInputStream stream = new DataInputStream(inputStream);
             setWriting(false);
             while (true) {
@@ -449,7 +471,6 @@ public class TcpService extends NotificationService {
                     stream.readFully(buffer, 0, 4);
                     dataLength = parseInt(buffer);
                     if(dataLength == 0) {
-                        Log.i(TAG, "play audio heartbeat");
                         continue;
                     }
                     if(dataLength > buffer.length) {
@@ -460,7 +481,6 @@ public class TcpService extends NotificationService {
                     break;
                 }
                 if(getWriting()) {
-                    Log.w(TAG, "write audio busy");
                     continue;
                 }
 
@@ -499,16 +519,16 @@ public class TcpService extends NotificationService {
             } catch (Exception e) {
                 Log.e(TAG, "close audio socket error: " + e);
             }
+            stopAudio();
+            stopSocketOutputStream();
+            stopForeground(true);
+            mWakeLockManager.releaseWakeLock();
+            setPlaying(false);
+            if(mListener != null){
+                mListener.onMessage();
+            }
+            Log.i(TAG, "play audio ended");
         }
-        stopAudio();
-        stopSocketOutputStream();
-        stopForeground(true);
-        mWakeLockManager.releaseWakeLock();
-        setPlaying(false);
-        if(mListener != null){
-            mListener.onMessage();
-        }
-        Log.i(TAG, "play audio ended");
     }
 
     private void stopAudio(){

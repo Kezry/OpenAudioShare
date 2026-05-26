@@ -40,6 +40,7 @@ public class MainActivity extends AppCompatActivity {
     private String versionName;
     private SwitchCompat connectionSwitch;
     private TextView connectionText;
+    private TextView latencyText;
     private final TcpService.MessageListener messageListener = () -> {
         setConnectionStatus();
         setListenStatus();
@@ -75,6 +76,7 @@ public class MainActivity extends AppCompatActivity {
         managerText = findViewById(R.id.managerText);
         connectionSwitch = findViewById(R.id.connectionSwitch);
         connectionText = findViewById(R.id.connectionText);
+        latencyText = findViewById(R.id.latencyText);
         Intent intent = new Intent(this, TcpService.class);
         startService(intent);
         bindService(intent, connection, Context.BIND_AUTO_CREATE);
@@ -131,6 +133,13 @@ public class MainActivity extends AppCompatActivity {
             boolean playing = tcpService.getPlaying();
             connectionText.setText(playing ? R.string.connected : R.string.unconnected);
             connectionSwitch.setChecked(playing);
+            int delay = tcpService.getPlaybackDelay();
+            if(playing && delay > 0) {
+                latencyText.setVisibility(View.VISIBLE);
+                latencyText.setText("Sync: " + delay + "ms");
+            } else {
+                latencyText.setVisibility(View.GONE);
+            }
         });
     }
 

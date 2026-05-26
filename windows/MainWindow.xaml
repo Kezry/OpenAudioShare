@@ -136,6 +136,7 @@
                                                     <ColumnDefinition Width="*"></ColumnDefinition>
                                                     <ColumnDefinition Width="Auto"></ColumnDefinition>
                                                     <ColumnDefinition Width="Auto"></ColumnDefinition>
+                                                    <ColumnDefinition Width="Auto"></ColumnDefinition>
                                                 </Grid.ColumnDefinitions>
                                                 <TextBox Height="30" MinHeight="10"  Padding="10 5" VerticalContentAlignment="Center"
                                             Text="{Binding Display}" ToolTip="{Binding Display}" IsReadOnly="{Binding IdReadOnly}"/>
@@ -143,7 +144,17 @@
                                             ItemsSource="{Binding Channels}" IsEnabled="{Binding ChannelEnabled}" Padding="6 6 0 6"
                                             SelectedValue="{Binding ChannelSelected, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                             DisplayMemberPath="Value"/>
-                                                <Button Grid.Column="2" Height="30" Width="30" Content="&#x2716;" FontWeight="Thin"
+                                                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" Margin="5 0 0 0"
+                                                            Visibility="{Binding Connected, Converter={StaticResource BooleanToVisibility}, Mode=OneWay}">
+                                                    <Border Width="8" Height="8" CornerRadius="50" Margin="0 0 3 0"
+                                                            Background="{Binding QualityColor}" VerticalAlignment="Center"/>
+                                                    <TextBlock FontSize="10" Foreground="Gray" VerticalAlignment="Center">
+                                                        <TextBlock.Text>
+                                                            <Binding Path="LastRTT" StringFormat="{}{0}ms"/>
+                                                        </TextBlock.Text>
+                                                    </TextBlock>
+                                                </StackPanel>
+                                                <Button Grid.Column="3" Height="30" Width="30" Content="&#x2716;" FontWeight="Thin"
                                                         Margin="10 0 0 0" Padding="0" FontSize="11"
                                                         ToolTip="{DynamicResource remove}"
                                                         HorizontalContentAlignment="Center"

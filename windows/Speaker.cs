@@ -26,7 +26,9 @@ namespace AudioShare
             AudioData = 1,
             Volume = 2,
             SyncTime = 3,
-            Stop = 4
+            Stop = 4,
+            MeasureLatency = 5,
+            SetDelay = 6
         }
         public event PropertyChangedEventHandler PropertyChanged;
         public event EventHandler<Speaker> Remove;
@@ -264,12 +266,16 @@ namespace AudioShare
             {
                 while (stream.CanRead)
                 {
-                    await stream.ReadAsync(_receiveBuffer, 0, _receiveBuffer.Length);
+                    int bytesRead = await stream.ReadAsync(_receiveBuffer, 0, _receiveBuffer.Length);
+                    if (bytesRead == 0)
+                    {
+                        _ = DisConnect(true);
+                        return;
+                    }
                 }
             }
-            catch (Exception e)
+            catch (Exception)
             {
-                // 处理异常
             }
         }
 
@@ -460,6 +466,7 @@ namespace AudioShare
 
         private long _lastSendTime = 0;
         private static readonly byte[] _heartBeatBytes = new byte[] { 0x00, 0x00, 0x00, 0x00 };
+        private readonly byte[] _lengthBuffer = new byte[4];
         public void SendHeartbeat()
         {
             _dispatcher.Invoke(async () =>
@@ -467,7 +474,7 @@ namespace AudioShare
                 if(DateTimeOffset.UtcNow.ToUnixTimeSeconds() - _lastSendTime > 5)
                 {
                     if(!await WriteTcp(_heartBeatBytes)) {
-                        _ = DisConnect();
+                        _ = DisConnect(true);
                     }
                 }
             });
@@ -483,8 +490,11 @@ namespace AudioShare
                 {
                     if (sendLength)
                     {
-                        var dataLength = BitConverter.GetBytes(length);
-                        await tcpClient.GetStream().WriteAsync(dataLength, 0, dataLength.Length);
+                        _lengthBuffer[0] = (byte)(length & 0xFF);
+                        _lengthBuffer[1] = (byte)((length >> 8) & 0xFF);
+                        _lengthBuffer[2] = (byte)((length >> 16) & 0xFF);
+                        _lengthBuffer[3] = (byte)((length >> 24) & 0xFF);
+                        await tcpClient.GetStream().WriteAsync(_lengthBuffer, 0, 4);
                     }
                     await tcpClient.GetStream().WriteAsync(buffer, 0, length);
                     await tcpClient.GetStream().FlushAsync();
@@ -504,9 +514,9 @@ namespace AudioShare
 
         private async Task RequestTcp(Command command, byte[] data = null, bool force=false)
         {
-            if (command == Command.None || 
-                string.IsNullOrWhiteSpace(_remoteIP) || 
-                _remotePort <= 0 || 
+            if (command == Command.None ||
+                string.IsNullOrWhiteSpace(_remoteIP) ||
+                _remotePort <= 0 ||
                 (!force && !Connected))
             {
                 return;
@@ -535,6 +545,68 @@ namespace AudioShare
             catch (Exception)
             {
             }
+        }
+
+        private int _lastRTT = 0;
+        public int LastRTT
+        {
+            get => _lastRTT;
+            private set
+            {
+                if (_lastRTT != value)
+                {
+                    _lastRTT = value;
+                    OnPropertyChanged(nameof(LastRTT));
+                    OnPropertyChanged(nameof(QualityColor));
+                }
+            }
+        }
+
+        public System.Windows.Media.Brush QualityColor
+        {
+            get
+            {
+                if (_lastRTT <= 20) return System.Windows.Media.Brushes.Green;
+                if (_lastRTT <= 50) return System.Windows.Media.Brushes.Yellow;
+                return System.Windows.Media.Brushes.Red;
+            }
+        }
+
+        public async Task<long> MeasureLatencyAsync()
+        {
+            if (string.IsNullOrWhiteSpace(_remoteIP) || _remotePort <= 0 || !Connected)
+                return -1;
+
+            TcpClient client = new TcpClient();
+            client.SendTimeout = 2000;
+            client.ReceiveTimeout = 2000;
+            try
+            {
+                long start = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+                await client.ConnectAsync(_remoteIP, _remotePort);
+                await client.GetStream().WriteAsync(TCP_HEAD, 0, TCP_HEAD.Length);
+                await client.GetStream().WriteAsync(new byte[] { (byte)Command.MeasureLatency }, 0, 1);
+                await client.GetStream().FlushAsync();
+                await client.GetStream().ReadAsync(new byte[1], 0, 1);
+                long rtt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() - start;
+                LastRTT = (int)rtt;
+                return rtt;
+            }
+            catch (Exception)
+            {
+                LastRTT = -1;
+                return -1;
+            }
+            finally
+            {
+                try { client.Close(); } catch (Exception) { }
+            }
+        }
+
+        public async Task SetDelay(int delayMs)
+        {
+            if (delayMs < 0) delayMs = 0;
+            await RequestTcp(Command.SetDelay, BitConverter.GetBytes(delayMs));
         }
 
         private void OnPropertyChanged(string propertyName)

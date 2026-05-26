@@ -28,6 +28,7 @@ namespace AudioShare
 
         private readonly Dispatcher _dispatcher;
         private readonly DispatcherTimer _heartBeatTimer;
+        private readonly DispatcherTimer _syncTimer;
         private UdpClient _udpListener;
         public Model()
         {
@@ -40,6 +41,11 @@ namespace AudioShare
             _heartBeatTimer.Interval = TimeSpan.FromSeconds(5);
             _heartBeatTimer.IsEnabled = true;
             _heartBeatTimer.Start();
+            _syncTimer = new DispatcherTimer();
+            _syncTimer.Tick += OnSyncTimerTick;
+            _syncTimer.Interval = TimeSpan.FromSeconds(30);
+            _syncTimer.IsEnabled = true;
+            _syncTimer.Start();
         }
 
         private void SendHeartbeat(object sender, EventArgs e)
@@ -51,6 +57,30 @@ namespace AudioShare
                     item.SendHeartbeat();
                 }
             }
+        }
+
+        private async void OnSyncTimerTick(object sender, EventArgs e)
+        {
+            var connected = Speakers.Where(s => s.Connected).ToList();
+            if (connected.Count < 2) return;
+            await MeasureAndSyncDevices(connected);
+        }
+
+        private async Task MeasureAndSyncDevices(List<Speaker> devices)
+        {
+            foreach (var speaker in devices)
+            {
+                await speaker.MeasureLatencyAsync();
+            }
+            var validDevices = devices.Where(s => s.LastRTT > 0).ToList();
+            if (validDevices.Count < 2) return;
+            int maxRTT = validDevices.Max(s => s.LastRTT);
+            foreach (var speaker in validDevices)
+            {
+                int delayMs = maxRTT - speaker.LastRTT;
+                await speaker.SetDelay(delayMs);
+            }
+            Logger.Info($"Multi-device sync: maxRTT={maxRTT}ms, devices={validDevices.Count}");
         }
 
         private void OnToastActivated(ToastNotificationActivatedEventArgsCompat e)
@@ -533,6 +563,14 @@ namespace AudioShare
                 }
                 ResetSpeakerSetting();
                 _settings.Save();
+                if (allConnected.Count >= 2)
+                {
+                    _ = Task.Run(async () =>
+                    {
+                        await Task.Delay(1000);
+                        await _dispatcher.InvokeAsync(async () => await MeasureAndSyncDevices(allConnected));
+                    });
+                }
             }
             if (status != ConnectStatus.Connecting)
             {
