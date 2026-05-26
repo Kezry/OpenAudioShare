@@ -28,7 +28,6 @@ namespace AudioShare
 
         private readonly Dispatcher _dispatcher;
         private readonly DispatcherTimer _heartBeatTimer;
-        private readonly DispatcherTimer _syncTimer;
         private UdpClient _udpListener;
         public Model()
         {
@@ -41,13 +40,6 @@ namespace AudioShare
             _heartBeatTimer.Interval = TimeSpan.FromSeconds(5);
             _heartBeatTimer.IsEnabled = true;
             _heartBeatTimer.Start();
-
-            // 添加定期延迟同步定时器
-            _syncTimer = new DispatcherTimer();
-            _syncTimer.Tick += async (sender, e) => await PeriodicLatencyResynchronization();
-            _syncTimer.Interval = TimeSpan.FromSeconds(30); // 每30秒重新同步一次
-            _syncTimer.IsEnabled = true;
-            _syncTimer.Start();
         }
 
         private void SendHeartbeat(object sender, EventArgs e)
@@ -126,88 +118,6 @@ namespace AudioShare
         public void UpdateTitle()
         {
             OnPropertyChanged(nameof(Title));
-        }
-
-        // 同步状态显示相关属性
-        public string SyncStatusSummary
-        {
-            get
-            {
-                var connectedSpeakers = Speakers.Where(s => s.Connected).ToList();
-                if (connectedSpeakers.Count == 0)
-                {
-                    return "无设备连接";
-                }
-
-                var avgLatency = connectedSpeakers.Average(s => (double)s.GetAverageRtt());
-                var avgQuality = connectedSpeakers.Average(s => (double)s.GetOverallQualityScore());
-
-                return $"已连接 {connectedSpeakers.Count} 台设备 | 平均延迟: {avgLatency:F0}ms | 质量评分: {avgQuality:F0}";
-            }
-        }
-
-        public string DetailedSyncStatus
-        {
-            get
-            {
-                var connectedSpeakers = Speakers.Where(s => s.Connected).ToList();
-                if (connectedSpeakers.Count == 0)
-                {
-                    return "等待设备连接...";
-                }
-
-                StringBuilder status = new StringBuilder();
-                status.AppendLine("设备同步状态详情:");
-                status.AppendLine("------------------");
-
-                foreach (var speaker in connectedSpeakers)
-                {
-                    status.AppendLine($"📱 {speaker.Display}");
-                    status.AppendLine($"   延迟: {speaker.GetAverageRtt()}ms ({speaker.GetPerformanceDescription()})");
-                    status.AppendLine($"   网络: {speaker.GetNetworkQualityDescription()} (丢包: {speaker.GetPacketLossRate():F1}%)");
-                    status.AppendLine($"   质量: {speaker.GetOverallQualityScore()}/100");
-                    status.AppendLine($"   模式: {speaker.GetCurrentSyncMode()}");
-                    status.AppendLine();
-                }
-
-                return status.ToString();
-            }
-        }
-
-        public bool IsSyncHealthy
-        {
-            get
-            {
-                var connectedSpeakers = Speakers.Where(s => s.Connected).ToList();
-                if (connectedSpeakers.Count == 0) return false;
-
-                return connectedSpeakers.All(s => s.GetOverallQualityScore() >= 60);
-            }
-        }
-
-        public string SyncHealthIndicator
-        {
-            get
-            {
-                if (!IsSyncHealthy)
-                {
-                    return "⚠️"; // 警告标志
-                }
-
-                var avgQuality = Speakers.Where(s => s.Connected).Average(s => s.GetOverallQualityScore());
-                if (avgQuality >= 80)
-                {
-                    return "🟢"; // 绿色表示优秀
-                }
-                else if (avgQuality >= 60)
-                {
-                    return "🟡"; // 黄色表示一般
-                }
-                else
-                {
-                    return "🔴"; // 红色表示较差
-                }
-            }
         }
         public bool IsStartup
         {
@@ -621,80 +531,15 @@ namespace AudioShare
                 {
                     if (speaker.Connected) speaker.SyncTime();
                 }
-
-                // 应用最大延迟同步策略
-                ApplyMaxLatencySynchronization(allConnected);
-
                 ResetSpeakerSetting();
                 _settings.Save();
             }
             if (status != ConnectStatus.Connecting)
             {
                 ConnectedCount = Speakers.Where(m => m.Connected).Count();
-                OnPropertyChanged(nameof(SyncStatusSummary));
-                OnPropertyChanged(nameof(DetailedSyncStatus));
-                OnPropertyChanged(nameof(IsSyncHealthy));
-                OnPropertyChanged(nameof(SyncHealthIndicator));
             }
             ConnectingCount = Speakers.Where(m => m.Connecting).Count();
             Logger.Info("connect status changed end");
-        }
-
-        // 最大延迟同步策略
-        private async Task ApplyMaxLatencySynchronization(List<Speaker> connectedSpeakers)
-        {
-            if (connectedSpeakers.Count < 2) return; // 只有多设备时才需要同步
-
-            try
-            {
-                // 等待一段时间让RTT测量稳定
-                await Task.Delay(2000);
-
-                // 获取所有设备的RTT值
-                Dictionary<Speaker, long> rttValues = new Dictionary<Speaker, long>();
-                foreach (var speaker in connectedSpeakers)
-                {
-                    long rtt = speaker.GetAverageRtt();
-                    if (rtt > 0)
-                    {
-                        rttValues[speaker] = rtt;
-                    }
-                }
-
-                if (rttValues.Count < 2) return;
-
-                // 找到最大RTT值
-                long maxRtt = rttValues.Values.Max();
-                Logger.Info($"Max latency synchronization: Max RTT = {maxRtt}ms");
-
-                // 为每个设备计算延迟补偿
-                foreach (var kvp in rttValues)
-                {
-                    Speaker speaker = kvp.Key;
-                    long rtt = kvp.Value;
-                    int delayCompensation = (int)(maxRtt - rtt);
-
-                    // 发送延迟设置到Android设备
-                    if (delayCompensation > 0)
-                    {
-                        await speaker.SetPlaybackDelayAsync(delayCompensation);
-                        Logger.Info($"Set delay compensation for {speaker.Display}: {delayCompensation}ms");
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                Logger.Error($"Max latency synchronization error: {ex.Message}");
-            }
-        }
-
-        // 定期重新同步延迟
-        private async Task PeriodicLatencyResynchronization()
-        {
-            List<Speaker> connectedSpeakers = Speakers.Where(speaker => speaker.Connected).ToList();
-            if (connectedSpeakers.Count < 2) return;
-
-            await ApplyMaxLatencySynchronization(connectedSpeakers);
         }
 
         private void OnPropertyChanged(string propertyName)
