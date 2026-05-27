@@ -1,6 +1,6 @@
 # AudioShare - Real time sharing of Windows audio to Android devices
 
-[![image](https://img.shields.io/github/v/release/hehang0/AudioShare.svg?label=latest)](https://github.com/HeHang0/AudioShare/releases)
+[![image](https://img.shields.io/github/v/release/Kezry/OpenAudioShare.svg?label=latest)](https://github.com/Kezry/OpenAudioShare/releases)
 
 English | [简体中文](./README.md)
 
@@ -13,14 +13,16 @@ AudioShare is an application that allows you to transfer real-time sound from yo
 + Two connection methods: supports USB data cable and Wi Fi network connection.
 + Remote control: supports remote control of playing cloud music, using the Musiche project, and supports NetEase Cloud, QQ, and Migu music playback.
 + Multi machine interconnection: supports synchronous playback of multiple devices during remote playback, which can be disabled or enabled in the settings interface.
++ One-click operation: Connect or disconnect all devices at once, with auto-connect on startup.
++ Low latency optimization: Uses WASAPI low-latency capture on Windows and AAudio fast path on Android.
 
 ## User Guide
 
 ### Windows
 
-1. Download AudioShare.exe, AudioShare.apk, adb.exe, AdbWinApi.dll, AdbWinUsbApi.dll(ignore the last three adb related files if only used for wifi connections or if adb is already installed) from the [Release Page](https://github.com/HeHang0/AudioShare/releases/latest).
+1. Download AudioShare.exe and AudioShare.apk from the [Release Page](https://github.com/Kezry/OpenAudioShare/releases/latest). For USB connections, also download adb.exe, AdbWinApi.dll, AdbWinUsbApi.dll.
 2. Open AudioShare.exe application.
-3. Choose connection method：
+3. Choose connection method:
    + USB: Connect the Windows computer and Android device to the same USB cable.
    + Wi-Fi: Ensure that Windows computers and Android devices are connected to the same Wi Fi network.
 4. USB Connection: Select the device from the "USB Device" dropdown menu, and then click the "Connect" button.
@@ -40,6 +42,14 @@ AudioShare is an application that allows you to transfer real-time sound from yo
 
 ## Advanced
 
+### Connect/Disconnect All
+
+The "Connect All" and "Disconnect All" buttons at the bottom of the Windows app allow you to connect or disconnect all devices at once.
+
+### Auto Connect
+
+Enable the "Auto Connect" toggle to automatically connect all saved devices when the software starts.
+
 ### Phicomm R1 atmosphere light
 
 1. Authorize the app to obtain Android root privileges.
@@ -50,7 +60,7 @@ AudioShare is an application that allows you to transfer real-time sound from yo
 
 1. Access the remote management address displayed in the upper left corner of the Android app interface, with a default port of 8080 (Phicomm R1 is 8090).
 2. Open the remote management page and select to log in to NetEase Cloud, QQ, or Migu Music accounts in the settings interface to view personal playlists.
-3. Detailed introduction can be found in [Musiche project](https://github.com/HeHang0/Musiche).
+3. Detailed introduction can be found in [Musiche project](https://github.com/Kezry/Musiche).
 
 ### Multi interconnection
 
@@ -61,4 +71,6 @@ AudioShare is an application that allows you to transfer real-time sound from yo
 
 ### Download
 
-+ [Release](https://github.com/HeHang0/AudioShare/releases/latest)
++ [Latest Release](https://github.com/Kezry/OpenAudioShare/releases/latest)
++ [Windows v2.0.0](https://github.com/Kezry/OpenAudioShare/releases/download/v2.0.0/AudioShare.exe)
++ [Android v2.0.0](https://github.com/Kezry/OpenAudioShare/releases/download/v2.0.0/AudioShare.apk)

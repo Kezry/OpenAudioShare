@@ -97,34 +97,30 @@ jobs:
           @"
           ## AudioShare v$version
 
-          ### 🎉 v2.0.0 主要更新
+          ### 新增功能
+          - **一键连接/断开**: 同时连接或断开所有设备
+          - **自动连接**: 开启后启动软件自动连接已保存设备
+          - **延迟显示**: Windows 设备列表显示连接延迟和质量指示灯
+          - **同步延迟显示**: Android 端显示同步延迟信息
 
-          #### 多设备音频同步优化
-          - ✅ 精确时间戳同步（±20ms精度）
-          - ✅ 智能延迟补偿与网络自适应
-          - ✅ 连接中断自动恢复机制
-          - ✅ 4级网络质量自适应模式
-          - ✅ 完善的UI状态显示
-
-          #### 功能增强
-          - 🔧 分层智能同步架构
-          - 📊 实时同步质量监控
-          - 🔄 自动重连机制
-          - ⚡ 性能优化（CPU<3%, 内存<15MB）
+          ### 性能优化
+          - **低延迟音频**: Android 使用 AAudio 快速音频路径 (API 24+)
+          - **直接音频写入**: 移除线程切换，降低音频延迟
+          - **连接稳定性**: 断开后保留地址可重连，改善断开检测
+          - **多设备同步**: 通过控制通道测量 RTT，自动补偿延迟
 
           ### 下载说明
           - **AudioShare.exe**: Windows 版本（需要 .NET Framework 4.6.2+，Win10/11 自带）
           - **AudioShare.apk**: Android 安装包（需要 Android 5.0+）
           - **adb.exe**: ADB 工具（USB 连接需要，可选）
 
-          ### 安装指南
-          1. Windows 端下载并运行 AudioShare.exe
-          2. Android 端安装 AudioShare.apk
-          3. 确保 Windows 和 Android 设备在同一网络
-          4. 在 Windows 端选择设备连接即可
+          ### 系统要求
+          - Windows 10/11
+          - Android 5.0+
+          - 同一局域网（Wi-Fi）或 USB 数据线连接
 
           ---
-          [完整更新日志](https://github.com/Kezry/OpenAudioShare/blob/master/最终项目完成报告.md)
+          [项目主页](https://github.com/Kezry/OpenAudioShare)
           "@ | Out-File -FilePath release_notes.md -Encoding UTF8
 
       - name: Create Release

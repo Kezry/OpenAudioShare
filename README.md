@@ -13,12 +13,14 @@ AudioShare 是一款可以让您将 Windows 电脑的声音实时传输到安卓
 + 两种连接方式: 支持 USB 数据线和 Wi-Fi 网络连接。
 + 远程控制: 支持远程控制播放云端音乐，使用 Musiche 项目，支持网易云、QQ、咪咕音乐播放。
 + 多机互联: 支持远程播放时多设备同步播放，可在设置界面禁用或开启。
++ 一键操作: 支持一键连接/断开所有设备，支持开机自动连接。
++ 低延迟优化: 使用 WASAPI 低延迟采集，Android AAudio 快速音频路径。
 
 ## 使用教程
 
 ### Windows 端
 
-1. 从 [Release页面](https://github.com/Kezry/OpenAudioShare/releases/latest) 下载 AudioShare.exe、AudioShare.apk、adb.exe、AdbWinApi.dll、AdbWinUsbApi.dll（如果仅用于wifi连接或已经安装adb可忽略后面三个adb相关文件）。
+1. 从 [Release页面](https://github.com/Kezry/OpenAudioShare/releases/latest) 下载 AudioShare.exe、AudioShare.apk（USB 连接还需下载 adb.exe、AdbWinApi.dll、AdbWinUsbApi.dll）。
 2. 打开 AudioShare.exe 软件。
 3. 选择连接方式：
    + USB 连接: 将 Windows 电脑和安卓设备连接到同一根 USB 数据线。
@@ -39,6 +41,14 @@ AudioShare 是一款可以让您将 Windows 电脑的声音实时传输到安卓
 ![image](./images/android.png)
 
 ## 高级功能
+
+### 一键连接/断开
+
+Windows 端底部提供 “一键连接” 和 “一键断开” 按钮，可同时连接或断开所有设备。
+
+### 自动连接
+
+开启 “自动连接” 开关后，软件启动时会自动连接所有已保存的设备。
 
 ### 斐讯R1氛围灯
 
