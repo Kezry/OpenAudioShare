@@ -233,9 +233,9 @@ public class TcpService extends NotificationService {
             int audioFormat = AudioFormat.ENCODING_PCM_16BIT;
             int bufferSizeInBytes = AudioTrack.getMinBufferSize(sampleRate, channel, audioFormat);
             if(isLocal){
-                ((LocalSocket)socket).setReceiveBufferSize(bufferSizeInBytes * 4);
+                ((LocalSocket)socket).setReceiveBufferSize(bufferSizeInBytes * 2);
             }else {
-                ((Socket)socket).setReceiveBufferSize(bufferSizeInBytes * 4);
+                ((Socket)socket).setReceiveBufferSize(bufferSizeInBytes * 2);
             }
             new Thread(() -> playAudio(
                     sampleRate,
@@ -446,16 +446,26 @@ public class TcpService extends NotificationService {
                 audioAttributes.setFlags(AudioAttributes.FLAG_LOW_LATENCY);
             }
             if(httpServer != null) httpServer.getAudioPlayer().pause();
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-                mAudioTrack = new AudioTrack.Builder()
-                        .setAudioAttributes(audioAttributes.build())
-                        .setAudioFormat(audioFormat)
-                        .setBufferSizeInBytes(bufferSizeInBytes)
-                        .setTransferMode(AudioTrack.MODE_STREAM)
-                        .setSessionId(AudioManager.AUDIO_SESSION_ID_GENERATE)
-                        .setPerformanceMode(AudioTrack.PERFORMANCE_MODE_LOW_LATENCY)
-                        .build();
-            } else {
+            try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                    mAudioTrack = new AudioTrack.Builder()
+                            .setAudioAttributes(audioAttributes.build())
+                            .setAudioFormat(audioFormat)
+                            .setBufferSizeInBytes(bufferSizeInBytes)
+                            .setTransferMode(AudioTrack.MODE_STREAM)
+                            .setSessionId(AudioManager.AUDIO_SESSION_ID_GENERATE)
+                            .setPerformanceMode(AudioTrack.PERFORMANCE_MODE_LOW_LATENCY)
+                            .build();
+                } else {
+                    mAudioTrack = new AudioTrack(
+                            audioAttributes.build(),
+                            audioFormat,
+                            bufferSizeInBytes,
+                            AudioTrack.MODE_STREAM,
+                            AudioManager.AUDIO_SESSION_ID_GENERATE);
+                }
+            } catch (Exception e) {
+                Log.w(TAG, "Low latency AudioTrack failed, falling back: " + e);
                 mAudioTrack = new AudioTrack(
                         audioAttributes.build(),
                         audioFormat,
@@ -494,7 +504,10 @@ public class TcpService extends NotificationService {
                 if(httpServer != null && httpServer.getAudioPlayer().isPlaying()) {
                     continue;
                 }
-                mAudioTrack.write(buffer, 0, dataLength);
+                int written = mAudioTrack.write(buffer, 0, dataLength);
+                if(written < 0) {
+                    Log.e(TAG, "AudioTrack write error: " + written);
+                }
             }
         } catch (Exception e) {
             Log.e(TAG, "play audio error: " + e);
