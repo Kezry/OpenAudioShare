@@ -25,4 +25,7 @@
     <s:String x:Key="dataCompression">Data Compression</s:String>
     <s:String x:Key="windowAcrylic">Transparent</s:String>
     <s:String x:Key="effectiveAfterRestart">Effective after restart</s:String>
+    <s:String x:Key="autoConnect">Auto Connect</s:String>
+    <s:String x:Key="connectAll">Connect All</s:String>
+    <s:String x:Key="disconnectAll">Disconnect All</s:String>
 </ResourceDictionary>

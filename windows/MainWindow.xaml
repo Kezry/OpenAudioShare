@@ -29,6 +29,8 @@
                 <StackPanel Orientation="Horizontal">
                     <Label Content="{DynamicResource startup}" Margin="0 0 5 0" HorizontalAlignment="Left" VerticalAlignment="Bottom" Padding="0"/>
                     <ui:ToggleSwitch IsChecked="{Binding IsStartup}" Width="40" Height="20" VerticalAlignment="Bottom"/>
+                    <Label Content="{DynamicResource autoConnect}" Margin="10 0 5 0" HorizontalAlignment="Left" VerticalAlignment="Bottom" Padding="0"/>
+                    <ui:ToggleSwitch IsChecked="{Binding AutoConnect}" Width="40" Height="20" VerticalAlignment="Bottom"/>
                     <StackPanel Orientation="Horizontal"
                                 Visibility="{Binding AcrylicVisible, Converter={StaticResource BooleanToVisibility}, Mode=OneWay}">
                         <Label Content="{DynamicResource windowAcrylic}" Margin="10 0 5 0" HorizontalAlignment="Left" VerticalAlignment="Bottom" Padding="0"/>
@@ -193,6 +195,12 @@
                 <Slider Width="219" Height="16" MinHeight="16" Maximum="100" Margin="0" IsEnabled="{Binding VolumeCustom}" Value="{Binding Volume}" VerticalAlignment="Bottom"/>
                 <Label Content="{DynamicResource followSystem}" Margin="5 0 5 0" VerticalAlignment="Bottom" Padding="0"/>
                 <ui:ToggleSwitch IsChecked="{Binding VolumeFollowSystem}" Width="40" Height="20" VerticalAlignment="Bottom"/>
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" Margin="0 5 0 0" HorizontalAlignment="Center" Width="400">
+                <ui:Button Appearance="Success" Height="30" Width="195"
+                           Content="{DynamicResource connectAll}" Command="{Binding ConnectAllCommand}"/>
+                <ui:Button Appearance="Caution" Height="30" Width="195" Margin="10 0 0 0"
+                           Content="{DynamicResource disconnectAll}" Command="{Binding DisconnectAllCommand}"/>
             </StackPanel>
             <ui:Button Appearance="Danger"  Height="30" Width="400" Margin="0 10 0 0"
                        Content="{DynamicResource exit}" Click="Exit" />

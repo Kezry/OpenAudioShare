@@ -321,6 +321,49 @@ namespace AudioShare
 
         public RelayCommand AddIPSpeakerCommand => new RelayCommand(AddIPSpeaker, CanAddIPSpeaker);
 
+        public RelayCommand ConnectAllCommand => new RelayCommand(ConnectAll, CanConnectAll);
+
+        public RelayCommand DisconnectAllCommand => new RelayCommand(DisconnectAll, CanDisconnectAll);
+
+        public bool AutoConnect
+        {
+            get => _settings.AutoConnect;
+            set
+            {
+                _settings.AutoConnect = value;
+                _settings.Save();
+                OnPropertyChanged(nameof(AutoConnect));
+            }
+        }
+
+        private bool CanConnectAll(object sender)
+        {
+            return Speakers.Any(s => s.UnConnected);
+        }
+
+        private bool CanDisconnectAll(object sender)
+        {
+            return Speakers.Any(s => s.Connected || s.Connecting);
+        }
+
+        private async void ConnectAll(object sender)
+        {
+            foreach (var speaker in Speakers.Where(s => s.UnConnected).ToList())
+            {
+                _ = speaker.Connect();
+                await Task.Delay(200);
+            }
+        }
+
+        private async void DisconnectAll(object sender)
+        {
+            foreach (var speaker in Speakers.Where(s => s.Connected || s.Connecting).ToList())
+            {
+                _ = speaker.DisConnectCommand.Execute(null);
+                await Task.Delay(100);
+            }
+        }
+
         public void RefreshAudios()
         {
             RefreshAudios(null);
@@ -406,6 +449,20 @@ namespace AudioShare
                 {
                     speaker.Dispose();
                 }
+            }
+            if (AutoConnect && Speakers.Any(s => s.UnConnected))
+            {
+                _ = Task.Run(async () =>
+                {
+                    await Task.Delay(1000);
+                    await _dispatcher.InvokeAsync(() =>
+                    {
+                        foreach (var speaker in Speakers.Where(s => s.UnConnected).ToList())
+                        {
+                            _ = speaker.Connect();
+                        }
+                    });
+                });
             }
         }
 

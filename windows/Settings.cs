@@ -25,6 +25,7 @@ namespace AudioShare
         public bool IsUSB { get; set; } = true;
         public bool VolumeFollowSystem { get; set; } = true;
         public bool Acrylic { get; set; } = true;
+        public bool AutoConnect { get; set; } = false;
 
         private static readonly string _loadPath;
         private static readonly Settings _settings;
