@@ -551,6 +551,13 @@ namespace AudioShare
         }
 
         private int _lastRTT = 0;
+        private double _smoothedRTT = 0;
+        private int _lastSentDelay = 0;
+        public int LastSentDelay
+        {
+            get => _lastSentDelay;
+            set => _lastSentDelay = value;
+        }
         public int LastRTT
         {
             get => _lastRTT;
@@ -592,7 +599,11 @@ namespace AudioShare
                 await client.GetStream().FlushAsync();
                 await client.GetStream().ReadAsync(new byte[1], 0, 1);
                 long rtt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() - start;
-                LastRTT = (int)rtt;
+                if (_smoothedRTT == 0)
+                    _smoothedRTT = rtt;
+                else
+                    _smoothedRTT = 0.3 * rtt + 0.7 * _smoothedRTT;
+                LastRTT = (int)Math.Round(_smoothedRTT);
                 return rtt;
             }
             catch (Exception)

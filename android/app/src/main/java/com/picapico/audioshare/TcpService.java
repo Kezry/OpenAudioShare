@@ -69,14 +69,24 @@ public class TcpService extends NotificationService {
     private HttpServer httpServer;
     private SharedPreferences mSharedPreferences;
     private volatile int playbackDelayMs = 0;
+    private volatile int pendingDelayChange = 0;
+    private long totalBytesWritten = 0;
+    private int driftPacketCount = 0;
+    private static final int MAX_DRIFT_BUFFER_BYTES = 44100 * 4 / 10;
 
     public int getPlaybackDelay() {
         return playbackDelayMs;
     }
 
     private void setPlaybackDelay(int delayMs) {
-        playbackDelayMs = Math.max(0, Math.min(delayMs, 500));
-        Log.i(TAG, "Playback delay set to " + playbackDelayMs + "ms");
+        int clamped = Math.max(0, Math.min(delayMs, 500));
+        int oldDelay = playbackDelayMs;
+        playbackDelayMs = clamped;
+        int delta = clamped - oldDelay;
+        Log.i(TAG, "Playback delay set to " + clamped + "ms (delta=" + delta + "ms)");
+        if (getPlaying() && delta != 0) {
+            pendingDelayChange = delta;
+        }
     }
     @Override
     public void onCreate() {
@@ -501,12 +511,54 @@ public class TcpService extends NotificationService {
                     break;
                 }
 
+                if (pendingDelayChange != 0) {
+                    int change = pendingDelayChange;
+                    pendingDelayChange = 0;
+                    if (change > 0) {
+                        Log.i(TAG, "Applying delay increase: pausing " + change + "ms");
+                        try {
+                            if (mAudioTrack != null) mAudioTrack.pause();
+                            Thread.sleep(change);
+                            if (mAudioTrack != null) mAudioTrack.play();
+                        } catch (InterruptedException ignored) {}
+                    } else {
+                        Log.i(TAG, "Applying delay decrease: flushing " + Math.abs(change) + "ms");
+                        try {
+                            if (mAudioTrack != null) {
+                                mAudioTrack.pause();
+                                mAudioTrack.flush();
+                                mAudioTrack.play();
+                            }
+                        } catch (Exception e) {
+                            Log.e(TAG, "Error flushing AudioTrack: " + e);
+                        }
+                    }
+                }
+
                 if(httpServer != null && httpServer.getAudioPlayer().isPlaying()) {
                     continue;
                 }
                 int written = mAudioTrack.write(buffer, 0, dataLength);
                 if(written < 0) {
                     Log.e(TAG, "AudioTrack write error: " + written);
+                }
+                totalBytesWritten += Math.max(written, 0);
+                driftPacketCount++;
+                if (driftPacketCount >= 50 && mAudioTrack != null) {
+                    driftPacketCount = 0;
+                    try {
+                        long playbackHeadBytes = (long) mAudioTrack.getPlaybackHeadPosition() * 4;
+                        long bufferedBytes = totalBytesWritten - playbackHeadBytes;
+                        if (bufferedBytes > MAX_DRIFT_BUFFER_BYTES) {
+                            Log.w(TAG, "Drift detected: " + bufferedBytes + " bytes buffered, flushing");
+                            mAudioTrack.pause();
+                            mAudioTrack.flush();
+                            mAudioTrack.play();
+                            totalBytesWritten = 0;
+                        }
+                    } catch (Exception e) {
+                        Log.e(TAG, "Drift check error: " + e);
+                    }
                 }
             }
         } catch (Exception e) {
@@ -536,6 +588,9 @@ public class TcpService extends NotificationService {
     }
 
     private void stopAudio(){
+        pendingDelayChange = 0;
+        totalBytesWritten = 0;
+        driftPacketCount = 0;
         try {
             if(mAudioTrack != null) {
                 mAudioTrack.pause();

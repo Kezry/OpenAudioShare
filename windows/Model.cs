@@ -43,7 +43,7 @@ namespace AudioShare
             _heartBeatTimer.Start();
             _syncTimer = new DispatcherTimer();
             _syncTimer.Tick += OnSyncTimerTick;
-            _syncTimer.Interval = TimeSpan.FromSeconds(30);
+            _syncTimer.Interval = TimeSpan.FromSeconds(15);
             _syncTimer.IsEnabled = true;
             _syncTimer.Start();
         }
@@ -78,7 +78,11 @@ namespace AudioShare
             foreach (var speaker in validDevices)
             {
                 int delayMs = maxRTT - speaker.LastRTT;
-                await speaker.SetDelay(delayMs);
+                if (Math.Abs(delayMs - speaker.LastSentDelay) > 5)
+                {
+                    await speaker.SetDelay(delayMs);
+                    speaker.LastSentDelay = delayMs;
+                }
             }
             Logger.Info($"Multi-device sync: maxRTT={maxRTT}ms, devices={validDevices.Count}");
         }
