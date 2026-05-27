@@ -60,7 +60,7 @@ Enable the "Auto Connect" toggle to automatically connect all saved devices when
 
 1. Access the remote management address displayed in the upper left corner of the Android app interface, with a default port of 8080 (Phicomm R1 is 8090).
 2. Open the remote management page and select to log in to NetEase Cloud, QQ, or Migu Music accounts in the settings interface to view personal playlists.
-3. Detailed introduction can be found in [Musiche project](https://github.com/Kezry/Musiche).
+3. Detailed introduction can be found in [Musiche project](https://github.com/HeHang0/Musiche).
 
 ### Multi interconnection
 

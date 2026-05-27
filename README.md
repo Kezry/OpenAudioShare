@@ -60,7 +60,7 @@ Windows 端底部提供 “一键连接” 和 “一键断开” 按钮，可�
 
 1. 访问Android app界面左上角上显示的远程管理地址，默认端口为8080（斐讯R1为8090）。
 2. 打开远程管理页面可在设置界面选择登录网易云、QQ、咪咕音乐账号来查看个人歌单。
-3. 详细介绍可见[Musiche项目](https://github.com/Kezry/Musiche)。
+3. 详细介绍可见[Musiche项目](https://github.com/HeHang0/Musiche)。
 
 ### 多机互联
 
