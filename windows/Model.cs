@@ -359,7 +359,7 @@ namespace AudioShare
         {
             foreach (var speaker in Speakers.Where(s => s.Connected || s.Connecting).ToList())
             {
-                _ = speaker.DisConnectCommand.Execute(null);
+                speaker.DisConnectCommand.Execute(null);
                 await Task.Delay(100);
             }
         }
