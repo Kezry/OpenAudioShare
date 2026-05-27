@@ -233,9 +233,9 @@ public class TcpService extends NotificationService {
             int audioFormat = AudioFormat.ENCODING_PCM_16BIT;
             int bufferSizeInBytes = AudioTrack.getMinBufferSize(sampleRate, channel, audioFormat);
             if(isLocal){
-                ((LocalSocket)socket).setReceiveBufferSize(bufferSizeInBytes);
+                ((LocalSocket)socket).setReceiveBufferSize(bufferSizeInBytes * 4);
             }else {
-                ((Socket)socket).setReceiveBufferSize(bufferSizeInBytes);
+                ((Socket)socket).setReceiveBufferSize(bufferSizeInBytes * 4);
             }
             new Thread(() -> playAudio(
                     sampleRate,
@@ -446,12 +446,23 @@ public class TcpService extends NotificationService {
                 audioAttributes.setFlags(AudioAttributes.FLAG_LOW_LATENCY);
             }
             if(httpServer != null) httpServer.getAudioPlayer().pause();
-            mAudioTrack = new AudioTrack(
-                    audioAttributes.build(),
-                    audioFormat,
-                    bufferSizeInBytes,
-                    AudioTrack.MODE_STREAM,
-                    AudioManager.AUDIO_SESSION_ID_GENERATE);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                mAudioTrack = new AudioTrack.Builder()
+                        .setAudioAttributes(audioAttributes.build())
+                        .setAudioFormat(audioFormat)
+                        .setBufferSizeInBytes(bufferSizeInBytes)
+                        .setTransferMode(AudioTrack.MODE_STREAM)
+                        .setSessionId(AudioManager.AUDIO_SESSION_ID_GENERATE)
+                        .setPerformanceMode(AudioTrack.PERFORMANCE_MODE_LOW_LATENCY)
+                        .build();
+            } else {
+                mAudioTrack = new AudioTrack(
+                        audioAttributes.build(),
+                        audioFormat,
+                        bufferSizeInBytes,
+                        AudioTrack.MODE_STREAM,
+                        AudioManager.AUDIO_SESSION_ID_GENERATE);
+            }
             setVolume(0);
             byte[] buffer = new byte[bufferSizeInBytes];
             int dataLength;
@@ -465,7 +476,6 @@ public class TcpService extends NotificationService {
                 try { Thread.sleep(playbackDelayMs); } catch (InterruptedException ignored) {}
             }
             DataInputStream stream = new DataInputStream(inputStream);
-            setWriting(false);
             while (true) {
                 try {
                     stream.readFully(buffer, 0, 4);
@@ -480,30 +490,11 @@ public class TcpService extends NotificationService {
                 } catch (Exception e){
                     break;
                 }
-                if(getWriting()) {
-                    continue;
-                }
 
                 if(httpServer != null && httpServer.getAudioPlayer().isPlaying()) {
-                    Log.w(TAG, "write audio playing");
                     continue;
                 }
-                byte[] finalBuffer = buffer;
-                int finalDataLength = dataLength;
-                setWriting(true);
-                mExecutorService.execute(() -> {
-                    int code = mAudioTrack.write(finalBuffer, 0, finalDataLength);
-                    mAudioTrack.flush();
-                    mHandler.post(() -> setWriting(false));
-                    if(code < 0) {
-                        Log.e(TAG, "write audio data err: " + code);
-                    }
-                    int state = mAudioTrack.getPlayState();
-                    if(state != AudioTrack.PLAYSTATE_PLAYING) {
-                        Log.w(TAG, "write audio state: " + state);
-//                        mAudioTrack.play();
-                    }
-                });
+                mAudioTrack.write(buffer, 0, dataLength);
             }
         } catch (Exception e) {
             Log.e(TAG, "play audio error: " + e);

@@ -55,6 +55,7 @@ namespace AudioShare
                 return;
             }
             _capture = new WasapiLoopbackCapture(device);
+            _capture.BufferMilliseconds = 20;
             _capture.WaveFormat = new WaveFormat(sampleRate, 16, 2);
             _capture.DataAvailable += SendAudioData;
             if (StereoAvailable != null || LeftAvailable != null || RightAvailable != null)

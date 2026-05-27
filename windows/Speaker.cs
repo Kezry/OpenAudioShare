@@ -219,6 +219,9 @@ namespace AudioShare
                 await RequestTcp(Command.Stop, force: true);
                 IPAddress ipAddress = IPAddress.Parse(_remoteIP);
                 await tcpClient.ConnectAsync(ipAddress, _remotePort);
+                tcpClient.NoDelay = true;
+                int channelCount = _channel == AudioChannel.Stereo ? 2 : 1;
+                tcpClient.SendBufferSize = AudioManager.SampleRate * channelCount * 2 * 20 / 1000;
 
                 if (tcpClient.Connected)
                 {
