@@ -467,13 +467,13 @@ namespace AudioShare
             return _connectStatus == ConnectStatus.UnConnected;
         }
 
-        private long _lastSendTime = 0;
+        private int _lastSendTime = 0;
         private static readonly byte[] _heartBeatBytes = new byte[] { 0x00, 0x00, 0x00, 0x00 };
         private readonly byte[] _lengthBuffer = new byte[4];
         private byte[] _sendPacketBuffer;
         public void SendHeartbeat()
         {
-            if (Environment.TickCount64 - _lastSendTime > 5000)
+            if (unchecked(Environment.TickCount - _lastSendTime) > 5000)
             {
                 _ = WriteTcp(_heartBeatBytes).ContinueWith(t =>
                 {
@@ -485,7 +485,7 @@ namespace AudioShare
         {
             if (length == 0) length = buffer.Length;
             if (length == 0) return true;
-            _lastSendTime = Environment.TickCount64;
+            _lastSendTime = Environment.TickCount;
             try
             {
                 if (tcpClient != null)
