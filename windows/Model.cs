@@ -450,20 +450,6 @@ namespace AudioShare
                     speaker.Dispose();
                 }
             }
-            if (AutoConnect && Speakers.Any(s => s.UnConnected))
-            {
-                _ = Task.Run(async () =>
-                {
-                    await Task.Delay(1000);
-                    await _dispatcher.InvokeAsync(() =>
-                    {
-                        foreach (var speaker in Speakers.Where(s => s.UnConnected).ToList())
-                        {
-                            _ = speaker.Connect();
-                        }
-                    });
-                });
-            }
         }
 
         private void AddIPSpeaker(object sender)

@@ -201,8 +201,10 @@ namespace AudioShare
             await _model.RefreshSpeakers();
 #if DEBUG
 #else
+            Logger.Info("AutoConnect=" + _model.AutoConnect);
             if (_model.AutoConnect)
             {
+                Logger.Info("Auto-connecting speakers...");
                 List<Task> tasks = new List<Task>();
                 foreach (var speaker in _model.Speakers)
                 {
