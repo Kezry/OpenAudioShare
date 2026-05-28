@@ -526,23 +526,36 @@ public class TcpService extends NotificationService {
                 if (pendingDelayChange != 0) {
                     int change = pendingDelayChange;
                     pendingDelayChange = 0;
-                    if (change > 0) {
-                        Log.i(TAG, "Applying delay increase: pausing " + change + "ms");
-                        try {
-                            if (mAudioTrack != null) mAudioTrack.pause();
-                            Thread.sleep(change);
-                            if (mAudioTrack != null) mAudioTrack.play();
-                        } catch (InterruptedException ignored) {}
-                    } else {
-                        Log.i(TAG, "Applying delay decrease: flushing " + Math.abs(change) + "ms");
-                        try {
-                            if (mAudioTrack != null) {
-                                mAudioTrack.pause();
-                                mAudioTrack.flush();
-                                mAudioTrack.play();
+                    int absChange = Math.abs(change);
+                    if (absChange <= 50) {
+                        if (change > 0) {
+                            try {
+                                if (mAudioTrack != null) mAudioTrack.pause();
+                                Thread.sleep(change);
+                                if (mAudioTrack != null) mAudioTrack.play();
+                            } catch (InterruptedException ignored) {}
+                        } else {
+                            try {
+                                if (mAudioTrack != null) {
+                                    mAudioTrack.pause();
+                                    mAudioTrack.flush();
+                                    mAudioTrack.play();
+                                }
+                            } catch (Exception e) {
+                                Log.e(TAG, "Error flushing AudioTrack: " + e);
                             }
-                        } catch (Exception e) {
-                            Log.e(TAG, "Error flushing AudioTrack: " + e);
+                        }
+                    } else {
+                        Log.i(TAG, "Smooth delay: " + change + "ms in steps");
+                        int remaining = absChange;
+                        while (remaining > 0) {
+                            int step = Math.min(remaining, 50);
+                            try {
+                                if (mAudioTrack != null) mAudioTrack.pause();
+                                Thread.sleep(step);
+                                if (mAudioTrack != null) mAudioTrack.play();
+                            } catch (InterruptedException ignored) {}
+                            remaining -= step;
                         }
                     }
                 }

@@ -28,4 +28,5 @@
     <s:String x:Key="autoConnect">自动连接</s:String>
     <s:String x:Key="connectAll">一键连接</s:String>
     <s:String x:Key="disconnectAll">一键断开</s:String>
+    <s:String x:Key="syncDevices">音频同步</s:String>
 </ResourceDictionary>

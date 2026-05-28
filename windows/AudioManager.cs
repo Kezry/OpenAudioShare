@@ -14,6 +14,7 @@ namespace AudioShare
         public static event EventHandler<WaveInEventArgs> RightAvailable;
         public static event EventHandler Stoped;
         public static event EventHandler<int> OnVolumeNotification;
+        public static event EventHandler OnAudioResumed;
 
         private static WasapiLoopbackCapture _capture;
         private static MMDevice _device;
@@ -21,6 +22,7 @@ namespace AudioShare
         private static int _sampleRate;
         private static byte[] _leftBuffer;
         private static byte[] _rightBuffer;
+        private static bool _wasSilent = true;
 
         static AudioManager()
         {
@@ -108,7 +110,16 @@ namespace AudioShare
 
         private static void SendAudioData(object sender, WaveInEventArgs e)
         {
-            if (e.BytesRecorded <= 0) return;
+            if (e.BytesRecorded <= 0)
+            {
+                _wasSilent = true;
+                return;
+            }
+            if (_wasSilent)
+            {
+                _wasSilent = false;
+                OnAudioResumed?.Invoke(null, EventArgs.Empty);
+            }
             Logger.Debug("set audio data start");
             StereoAvailable?.Invoke(null, e);
             bool canLeft = LeftAvailable != null;

@@ -28,12 +28,13 @@ namespace AudioShare
 
         private readonly Dispatcher _dispatcher;
         private readonly DispatcherTimer _heartBeatTimer;
-        private readonly DispatcherTimer _syncTimer;
         private UdpClient _udpListener;
+        private CancellationTokenSource _audioChangeSyncCancel;
         public Model()
         {
             _dispatcher = Dispatcher.CurrentDispatcher;
             AudioManager.OnVolumeNotification += OnVolumeChanged;
+            AudioManager.OnAudioResumed += OnAudioResumed;
             ToastNotificationManagerCompat.OnActivated += OnToastActivated;
             ConnectUdp();
             _heartBeatTimer = new DispatcherTimer();
@@ -41,11 +42,6 @@ namespace AudioShare
             _heartBeatTimer.Interval = TimeSpan.FromSeconds(5);
             _heartBeatTimer.IsEnabled = true;
             _heartBeatTimer.Start();
-            _syncTimer = new DispatcherTimer();
-            _syncTimer.Tick += OnSyncTimerTick;
-            _syncTimer.Interval = TimeSpan.FromSeconds(15);
-            _syncTimer.IsEnabled = true;
-            _syncTimer.Start();
         }
 
         private void SendHeartbeat(object sender, EventArgs e)
@@ -59,11 +55,23 @@ namespace AudioShare
             }
         }
 
-        private async void OnSyncTimerTick(object sender, EventArgs e)
+        private async void OnAudioResumed(object sender, EventArgs e)
         {
             var connected = Speakers.Where(s => s.Connected).ToList();
             if (connected.Count < 2) return;
-            await MeasureAndSyncDevices(connected);
+            _audioChangeSyncCancel?.Cancel();
+            _audioChangeSyncCancel = new CancellationTokenSource();
+            var token = _audioChangeSyncCancel.Token;
+            try
+            {
+                await Task.Delay(2000, token);
+                if (!token.IsCancellationRequested)
+                {
+                    Logger.Info("Audio resumed, syncing devices...");
+                    await MeasureAndSyncDevices(Speakers.Where(s => s.Connected).ToList());
+                }
+            }
+            catch (TaskCanceledException) { }
         }
 
         private async Task MeasureAndSyncDevices(List<Speaker> devices)
@@ -325,6 +333,8 @@ namespace AudioShare
 
         public RelayCommand DisconnectAllCommand => new RelayCommand(DisconnectAll, CanDisconnectAll);
 
+        public RelayCommand SyncDevicesCommand => new RelayCommand(SyncDevices, CanSyncDevices);
+
         public bool AutoConnect
         {
             get => _settings.AutoConnect;
@@ -361,6 +371,20 @@ namespace AudioShare
             {
                 speaker.DisConnectCommand.Execute(null);
                 await Task.Delay(100);
+            }
+        }
+
+        private bool CanSyncDevices(object sender)
+        {
+            return Speakers.Count(s => s.Connected) >= 2;
+        }
+
+        private async void SyncDevices(object sender)
+        {
+            var connected = Speakers.Where(s => s.Connected).ToList();
+            if (connected.Count >= 2)
+            {
+                await MeasureAndSyncDevices(connected);
             }
         }
 
