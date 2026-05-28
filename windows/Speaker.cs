@@ -470,37 +470,43 @@ namespace AudioShare
         private long _lastSendTime = 0;
         private static readonly byte[] _heartBeatBytes = new byte[] { 0x00, 0x00, 0x00, 0x00 };
         private readonly byte[] _lengthBuffer = new byte[4];
+        private byte[] _sendPacketBuffer;
         public void SendHeartbeat()
         {
-            _dispatcher.Invoke(async () =>
+            if (Environment.TickCount64 - _lastSendTime > 5000)
             {
-                if(DateTimeOffset.UtcNow.ToUnixTimeSeconds() - _lastSendTime > 5)
+                _ = WriteTcp(_heartBeatBytes).ContinueWith(t =>
                 {
-                    if(!await WriteTcp(_heartBeatBytes)) {
-                        _ = DisConnect(true);
-                    }
-                }
-            });
+                    if (!t.Result) _ = DisConnect(true);
+                });
+            }
         }
         private async Task<bool> WriteTcp(byte[] buffer, int length = 0, bool sendLength = false)
         {
             if (length == 0) length = buffer.Length;
             if (length == 0) return true;
-            _lastSendTime = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            _lastSendTime = Environment.TickCount64;
             try
             {
                 if (tcpClient != null)
                 {
+                    var stream = tcpClient.GetStream();
                     if (sendLength)
                     {
-                        _lengthBuffer[0] = (byte)(length & 0xFF);
-                        _lengthBuffer[1] = (byte)((length >> 8) & 0xFF);
-                        _lengthBuffer[2] = (byte)((length >> 16) & 0xFF);
-                        _lengthBuffer[3] = (byte)((length >> 24) & 0xFF);
-                        await tcpClient.GetStream().WriteAsync(_lengthBuffer, 0, 4);
+                        int total = 4 + length;
+                        if (_sendPacketBuffer == null || _sendPacketBuffer.Length < total)
+                            _sendPacketBuffer = new byte[total];
+                        _sendPacketBuffer[0] = (byte)(length & 0xFF);
+                        _sendPacketBuffer[1] = (byte)((length >> 8) & 0xFF);
+                        _sendPacketBuffer[2] = (byte)((length >> 16) & 0xFF);
+                        _sendPacketBuffer[3] = (byte)((length >> 24) & 0xFF);
+                        Buffer.BlockCopy(buffer, 0, _sendPacketBuffer, 4, length);
+                        await stream.WriteAsync(_sendPacketBuffer, 0, total);
                     }
-                    await tcpClient.GetStream().WriteAsync(buffer, 0, length);
-                    await tcpClient.GetStream().FlushAsync();
+                    else
+                    {
+                        await stream.WriteAsync(buffer, 0, length);
+                    }
                     if (length > tcpClient.SendBufferSize)
                     {
                         tcpClient.SendBufferSize = length;
@@ -515,6 +521,8 @@ namespace AudioShare
             return false;
         }
 
+        private static readonly byte[] _latencyCmdBytes = new byte[] { (byte)Command.MeasureLatency };
+        private static readonly byte[] _responseBuffer = new byte[1];
         private async Task RequestTcp(Command command, byte[] data = null, bool force=false)
         {
             if (command == Command.None ||
@@ -525,18 +533,19 @@ namespace AudioShare
                 return;
             }
             TcpClient client = new TcpClient();
+            client.NoDelay = true;
             client.SendTimeout = 1000;
             try
             {
                 await client.ConnectAsync(_remoteIP, _remotePort);
-                await client.GetStream().WriteAsync(TCP_HEAD, 0, TCP_HEAD.Length);
-                await client.GetStream().WriteAsync(new byte[] { (byte)command }, 0, 1);
+                var stream = client.GetStream();
+                await stream.WriteAsync(TCP_HEAD, 0, TCP_HEAD.Length);
+                await stream.WriteAsync(new byte[] { (byte)command }, 0, 1);
                 if (data != null && data.Length > 0)
                 {
-                    await client.GetStream().WriteAsync(data, 0, data.Length);
+                    await stream.WriteAsync(data, 0, data.Length);
                 }
-                await client.GetStream().FlushAsync();
-                await client.GetStream().ReadAsync(new byte[1], 0, 1);
+                await stream.ReadAsync(_responseBuffer, 0, 1);
             }
             catch (Exception)
             {
@@ -588,21 +597,22 @@ namespace AudioShare
                 return -1;
 
             TcpClient client = new TcpClient();
+            client.NoDelay = true;
             client.SendTimeout = 2000;
             client.ReceiveTimeout = 2000;
             try
             {
                 long start = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
                 await client.ConnectAsync(_remoteIP, _remotePort);
-                await client.GetStream().WriteAsync(TCP_HEAD, 0, TCP_HEAD.Length);
-                await client.GetStream().WriteAsync(new byte[] { (byte)Command.MeasureLatency }, 0, 1);
-                await client.GetStream().FlushAsync();
-                await client.GetStream().ReadAsync(new byte[1], 0, 1);
+                var stream = client.GetStream();
+                await stream.WriteAsync(TCP_HEAD, 0, TCP_HEAD.Length);
+                await stream.WriteAsync(_latencyCmdBytes, 0, 1);
+                await stream.ReadAsync(_responseBuffer, 0, 1);
                 long rtt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() - start;
                 if (_smoothedRTT == 0)
                     _smoothedRTT = rtt;
                 else
-                    _smoothedRTT = 0.3 * rtt + 0.7 * _smoothedRTT;
+                    _smoothedRTT = 0.6 * rtt + 0.4 * _smoothedRTT;
                 LastRTT = (int)Math.Round(_smoothedRTT);
                 return rtt;
             }

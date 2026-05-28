@@ -19,6 +19,10 @@ namespace AudioShare
         private static MMDevice _device;
         private static readonly Dispatcher _dispatcher;
         private static int _sampleRate;
+        private static byte[] _leftBuffer;
+        private static byte[] _rightBuffer;
+        private static WaveInEventArgs _leftArgs;
+        private static WaveInEventArgs _rightArgs;
 
         static AudioManager()
         {
@@ -113,28 +117,31 @@ namespace AudioShare
             bool canRight = RightAvailable != null;
             if (canLeft || canRight)
             {
-                byte[] bufferLeft = new byte[e.BytesRecorded / 2];
-                byte[] bufferRight = new byte[e.BytesRecorded / 2];
+                int half = e.BytesRecorded / 2;
+                if (_leftBuffer == null || _leftBuffer.Length < half)
+                {
+                    _leftBuffer = new byte[half];
+                    _rightBuffer = new byte[half];
+                    _leftArgs = new WaveInEventArgs(_leftBuffer, half);
+                    _rightArgs = new WaveInEventArgs(_rightBuffer, half);
+                }
                 for (int i = 0, j = 0;
-                    j < e.BytesRecorded / 2;
+                    j < half;
                     i += 4, j += 2)
                 {
                     if (canLeft)
                     {
-                        bufferLeft[j] = e.Buffer[i];
-                        bufferLeft[j + 1] = e.Buffer[i + 1];
+                        _leftBuffer[j] = e.Buffer[i];
+                        _leftBuffer[j + 1] = e.Buffer[i + 1];
                     }
                     if (canRight)
                     {
-                        bufferRight[j] = e.Buffer[i + 2];
-                        bufferRight[j + 1] = e.Buffer[i + 3];
+                        _rightBuffer[j] = e.Buffer[i + 2];
+                        _rightBuffer[j + 1] = e.Buffer[i + 3];
                     }
                 }
-                _dispatcher.InvokeAsync(() =>
-                {
-                    LeftAvailable?.Invoke(null, new WaveInEventArgs(bufferLeft, bufferLeft.Length));
-                    RightAvailable?.Invoke(null, new WaveInEventArgs(bufferRight, bufferRight.Length));
-                });
+                if (canLeft) LeftAvailable?.Invoke(null, _leftArgs);
+                if (canRight) RightAvailable?.Invoke(null, _rightArgs);
             }
             Logger.Debug("set audio data end");
         }

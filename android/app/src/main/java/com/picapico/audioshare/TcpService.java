@@ -70,9 +70,14 @@ public class TcpService extends NotificationService {
     private SharedPreferences mSharedPreferences;
     private volatile int playbackDelayMs = 0;
     private volatile int pendingDelayChange = 0;
-    private long totalBytesWritten = 0;
+    private volatile long totalBytesWritten = 0;
     private int driftPacketCount = 0;
-    private static final int MAX_DRIFT_BUFFER_BYTES = 44100 * 4 / 10;
+    private int mSampleRate = 44100;
+    private int mBytesPerFrame = 4;
+    private static final int DRIFT_TOLERANCE_MS = 100;
+    private final byte[] _readHeadBuf = new byte[20];
+    private final byte[] _readIntBuf = new byte[4];
+    private static final byte[] _heartBeatByte = new byte[1];
 
     public int getPlaybackDelay() {
         return playbackDelayMs;
@@ -140,33 +145,31 @@ public class TcpService extends NotificationService {
 
     private byte readHead(InputStream stream) throws IOException {
         int bufferLength = HEAD.length();
-        byte[] buffer = new byte[bufferLength];
         int offset = 0;
         int bytesRead;
         while (offset < bufferLength &&
-                (bytesRead = stream.read(buffer, offset, bufferLength - offset)) != -1){
+                (bytesRead = stream.read(_readHeadBuf, offset, bufferLength - offset)) != -1){
             offset += bytesRead;
         }
-        if(new String(buffer).equalsIgnoreCase(HEAD)){
-            while ((bytesRead = stream.read(buffer, 0, 1)) != -1){
-                if(bytesRead >= 1) return buffer[0];
+        if(new String(_readHeadBuf, 0, bufferLength).equalsIgnoreCase(HEAD)){
+            while ((bytesRead = stream.read(_readHeadBuf, 0, 1)) != -1){
+                if(bytesRead >= 1) return _readHeadBuf[0];
             }
         }
         return 0;
     }
 
     private int readInt(InputStream stream) throws IOException {
-        byte[] buffer = new byte[4];
         int offset = 0;
         int bytesRead = 0;
         while (offset < 4 &&
-                (bytesRead = stream.read(buffer, offset, 4 - offset)) != -1){
+                (bytesRead = stream.read(_readIntBuf, offset, 4 - offset)) != -1){
             offset += bytesRead;
         }
         if(bytesRead < 0){
             throw new IOException("read stream eol.");
         }
-        return parseInt(buffer);
+        return parseInt(_readIntBuf);
     }
 
     private int lastPCVolume = 1;
@@ -241,11 +244,15 @@ public class TcpService extends NotificationService {
             int sampleRate = readInt(stream);
             int channel = readInt(stream);
             int audioFormat = AudioFormat.ENCODING_PCM_16BIT;
+            int channelCount = (channel == AudioFormat.CHANNEL_OUT_STEREO) ? 2 : 1;
+            mSampleRate = sampleRate;
+            mBytesPerFrame = channelCount * 2; // 16-bit = 2 bytes per sample
             int bufferSizeInBytes = AudioTrack.getMinBufferSize(sampleRate, channel, audioFormat);
+            int recvBufSize = Math.max(bufferSizeInBytes * 4, 65536);
             if(isLocal){
-                ((LocalSocket)socket).setReceiveBufferSize(bufferSizeInBytes * 2);
+                ((LocalSocket)socket).setReceiveBufferSize(recvBufSize);
             }else {
-                ((Socket)socket).setReceiveBufferSize(bufferSizeInBytes * 2);
+                ((Socket)socket).setReceiveBufferSize(recvBufSize);
             }
             new Thread(() -> playAudio(
                     sampleRate,
@@ -489,7 +496,7 @@ public class TcpService extends NotificationService {
             mAudioTrack.play();
             PlayerVisualizer.startBase(mAudioTrack.getAudioSessionId());
             Log.i(TAG, "play audio ready to read");
-            outputStream.write(new byte[1]);
+            outputStream.write(_heartBeatByte);
             outputStream.flush();
             mSocketOutputStream = outputStream;
             if(playbackDelayMs > 0) {
@@ -504,6 +511,11 @@ public class TcpService extends NotificationService {
                         continue;
                     }
                     if(dataLength > buffer.length) {
+                        if (dataLength > bufferSizeInBytes * 4) {
+                            Log.w(TAG, "Skipping oversized packet: " + dataLength + " bytes");
+                            stream.skipBytes(dataLength);
+                            continue;
+                        }
                         buffer = new byte[dataLength];
                     }
                     stream.readFully(buffer, 0, dataLength);
@@ -547,10 +559,12 @@ public class TcpService extends NotificationService {
                 if (driftPacketCount >= 50 && mAudioTrack != null) {
                     driftPacketCount = 0;
                     try {
-                        long playbackHeadBytes = (long) mAudioTrack.getPlaybackHeadPosition() * 4;
+                        long playbackHeadBytes = (long) mAudioTrack.getPlaybackHeadPosition() * mBytesPerFrame;
                         long bufferedBytes = totalBytesWritten - playbackHeadBytes;
-                        if (bufferedBytes > MAX_DRIFT_BUFFER_BYTES) {
-                            Log.w(TAG, "Drift detected: " + bufferedBytes + " bytes buffered, flushing");
+                        long syncDelayBytes = (long) playbackDelayMs * mSampleRate * mBytesPerFrame / 1000;
+                        long driftThreshold = syncDelayBytes + (long) DRIFT_TOLERANCE_MS * mSampleRate * mBytesPerFrame / 1000;
+                        if (bufferedBytes > driftThreshold) {
+                            Log.w(TAG, "Drift detected: " + bufferedBytes + " bytes buffered (threshold=" + driftThreshold + "), flushing");
                             mAudioTrack.pause();
                             mAudioTrack.flush();
                             mAudioTrack.play();
@@ -661,12 +675,13 @@ public class TcpService extends NotificationService {
     private void startBroadcastTimer(){
         Timer timer = new Timer();
         timer.schedule(new TimerTask() {
+            private DatagramSocket broadcastSocket;
             @Override
             public void run() {
                 if (getPlaying()) {
                     try {
                         if(mSocketOutputStream != null) {
-                            mSocketOutputStream.write(new byte[1]);
+                            mSocketOutputStream.write(_heartBeatByte);
                             Log.i(TAG, "send heartbeat");
                             if(lastPCVolume > 0 && mAudioManager.getStreamVolume(AudioManager.STREAM_MUSIC) == 0){
                                 setVolume(lastPCVolume);
@@ -677,15 +692,18 @@ public class TcpService extends NotificationService {
                     }
                     return;
                 }
-                try (DatagramSocket socket = new DatagramSocket(0)) {
-                    socket.setBroadcast(true);
+                try {
+                    if (broadcastSocket == null || broadcastSocket.isClosed()) {
+                        broadcastSocket = new DatagramSocket(0);
+                        broadcastSocket.setBroadcast(true);
+                    }
                     String message = HEAD + "@" + getListenPort() + "@" + getHttpPort();
                     byte[] data = message.getBytes();
                     for (int i = 58261; i < 58271; i++) {
-                        socket.send(new DatagramPacket(data, data.length,
+                        broadcastSocket.send(new DatagramPacket(data, data.length,
                                 new InetSocketAddress(NetworkUtils.BROADCAST_ADDRESS, i)));
                     }
-                    Log.i(TAG, "send broadcast " + socket.getLocalPort());
+                    Log.i(TAG, "send broadcast " + broadcastSocket.getLocalPort());
                 } catch (Exception e) {
                     Log.e(TAG, "send broadcast error ", e);
                 }

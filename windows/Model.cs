@@ -68,17 +68,14 @@ namespace AudioShare
 
         private async Task MeasureAndSyncDevices(List<Speaker> devices)
         {
-            foreach (var speaker in devices)
-            {
-                await speaker.MeasureLatencyAsync();
-            }
+            await Task.WhenAll(devices.Select(s => s.MeasureLatencyAsync()));
             var validDevices = devices.Where(s => s.LastRTT > 0).ToList();
             if (validDevices.Count < 2) return;
             int maxRTT = validDevices.Max(s => s.LastRTT);
             foreach (var speaker in validDevices)
             {
                 int delayMs = maxRTT - speaker.LastRTT;
-                if (Math.Abs(delayMs - speaker.LastSentDelay) > 5)
+                if (delayMs != speaker.LastSentDelay)
                 {
                     await speaker.SetDelay(delayMs);
                     speaker.LastSentDelay = delayMs;
@@ -112,7 +109,6 @@ namespace AudioShare
             if (_udpListener == null) return;
             while (true)
             {
-                await Task.Delay(1000);
                 UdpReceiveResult result = await _udpListener.ReceiveAsync();
                 if (result.Buffer.Length > 26) continue;
                 string message = Encoding.UTF8.GetString(result.Buffer);
@@ -121,7 +117,7 @@ namespace AudioShare
                 if (messages.Length < 2 || messages[0] != "picapico-audio-share") continue;
                 if (int.TryParse(messages[1], out int port) && port > 0 && port < 65535)
                 {
-                    _dispatcher.Invoke(() =>
+                    await _dispatcher.InvokeAsync(() =>
                     {
                         AddIPSpeaker(result.RemoteEndPoint.Address.ToString(), port);
                     });
