@@ -21,8 +21,6 @@ namespace AudioShare
         private static int _sampleRate;
         private static byte[] _leftBuffer;
         private static byte[] _rightBuffer;
-        private static WaveInEventArgs _leftArgs;
-        private static WaveInEventArgs _rightArgs;
 
         static AudioManager()
         {
@@ -122,8 +120,6 @@ namespace AudioShare
                 {
                     _leftBuffer = new byte[half];
                     _rightBuffer = new byte[half];
-                    _leftArgs = new WaveInEventArgs(_leftBuffer, half);
-                    _rightArgs = new WaveInEventArgs(_rightBuffer, half);
                 }
                 for (int i = 0, j = 0;
                     j < half;
@@ -140,8 +136,11 @@ namespace AudioShare
                         _rightBuffer[j + 1] = e.Buffer[i + 3];
                     }
                 }
-                if (canLeft) LeftAvailable?.Invoke(null, _leftArgs);
-                if (canRight) RightAvailable?.Invoke(null, _rightArgs);
+                _dispatcher.InvokeAsync(() =>
+                {
+                    if (canLeft) LeftAvailable?.Invoke(null, new WaveInEventArgs(_leftBuffer, half));
+                    if (canRight) RightAvailable?.Invoke(null, new WaveInEventArgs(_rightBuffer, half));
+                });
             }
             Logger.Debug("set audio data end");
         }
