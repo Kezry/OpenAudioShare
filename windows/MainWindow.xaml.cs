@@ -201,15 +201,18 @@ namespace AudioShare
             await _model.RefreshSpeakers();
 #if DEBUG
 #else
-            List<Task> tasks = new List<Task>();
-            foreach (var speaker in _model.Speakers)
+            if (_model.AutoConnect)
             {
-                if (speaker.UnConnected && speaker.ChannelSelected.Key != AudioChannel.None)
+                List<Task> tasks = new List<Task>();
+                foreach (var speaker in _model.Speakers)
                 {
-                    tasks.Add(speaker.Connect());
+                    if (speaker.UnConnected && speaker.ChannelSelected.Key != AudioChannel.None)
+                    {
+                        tasks.Add(speaker.Connect());
+                    }
                 }
+                await Task.WhenAll(tasks);
             }
-            await Task.WhenAll(tasks);
             if (_model.Speakers.Any(m => m.Connected))
             {
                 Hide();
