@@ -79,8 +79,10 @@ jobs:
           mkdir release
           # Windows files
           copy windows\bin\Release\net462\AudioShare.exe release\AudioShare.exe
-          # Android file
-          copy android\app\build\outputs\apk\release\app-release.apk release\AudioShare.apk
+          # Android 32-bit
+          copy android\app\build\outputs\apk\arm32\release\app-arm32-release.apk release\AudioShare.apk
+          # Android 64-bit
+          copy android\app\build\outputs\apk\arm64\release\app-arm64-release.apk release\AudioShare_arm64.apk
 
       - name: Download Platform Tools
         run: |
@@ -118,12 +120,13 @@ jobs:
 
           ### 下载说明
           - **AudioShare.exe**: Windows 版本（需要 .NET Framework 4.6.2+，Win10/11 自带）
-          - **AudioShare.apk**: Android 安装包（需要 Android 5.0+）
+          - **AudioShare.apk**: Android 32位安装包（需要 Android 5.0+）
+          - **AudioShare_arm64.apk**: Android 64位安装包（适配 Android 14+，推荐新设备使用）
           - **adb.exe**: ADB 工具（USB 连接需要，可选）
 
           ### 系统要求
           - Windows 10/11
-          - Android 5.0+
+          - Android 5.0+（32位）/ Android 14+（64位）
           - 同一局域网（Wi-Fi）或 USB 数据线连接
 
           ---
@@ -137,6 +140,7 @@ jobs:
           files: |
             release/AudioShare.exe
             release/AudioShare.apk
+            release/AudioShare_arm64.apk
             release/adb.exe
             release/AdbWinApi.dll
             release/AdbWinUsbApi.dll
