@@ -33,3 +33,6 @@ Desktop.ini
 .DS_Store
 .AppleDouble
 .LSOverride
+
+# 本地文档（在 local-info 分支管理）
+local-info/
