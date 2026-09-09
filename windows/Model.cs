@@ -114,28 +114,53 @@ namespace AudioShare
                 {
                     _udpListener = new UdpClient(i);
                     _udpListener.EnableBroadcast = true;
+                    break;
                 }
                 catch (Exception)
                 {
                 }
             }
             if (_udpListener == null) return;
+            SearchSpeakers(null);
             while (true)
             {
                 UdpReceiveResult result = await _udpListener.ReceiveAsync();
-                if (result.Buffer.Length > 26) continue;
                 string message = Encoding.UTF8.GetString(result.Buffer);
-                Logger.Info("Received message " + result.RemoteEndPoint.Address.ToString());
                 var messages = message.Split('@');
                 if (messages.Length < 2 || messages[0] != "picapico-audio-share") continue;
                 if (int.TryParse(messages[1], out int port) && port > 0 && port < 65535)
                 {
+                    Logger.Info("Received message " + result.RemoteEndPoint.Address.ToString());
                     await _dispatcher.InvokeAsync(() =>
                     {
                         AddIPSpeaker(result.RemoteEndPoint.Address.ToString(), port);
                     });
                 }
             }
+        }
+
+        private static readonly byte[] _discoverProbe = Encoding.UTF8.GetBytes("picapico-audio-share-find");
+
+        private async void SearchSpeakers(object sender)
+        {
+            if (_udpListener == null) return;
+            Logger.Info("search speakers start");
+            try
+            {
+                for (int repeat = 0; repeat < 3; repeat++)
+                {
+                    for (int port = 58261; port <= 58270; port++)
+                    {
+                        await _udpListener.SendAsync(_discoverProbe, _discoverProbe.Length, "255.255.255.255", port);
+                    }
+                    await Task.Delay(300);
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Error("search speakers error: " + ex.Message);
+            }
+            Logger.Info("search speakers end");
         }
 
         private void OnVolumeChanged(object sender, int volume)
@@ -333,6 +358,8 @@ namespace AudioShare
         public RelayCommand RefreshSpeakersCommand => new RelayCommand(RefreshSpeakers, CanRefreshSpeakers);
 
         public RelayCommand AddIPSpeakerCommand => new RelayCommand(AddIPSpeaker, CanAddIPSpeaker);
+
+        public RelayCommand SearchSpeakersCommand => new RelayCommand(SearchSpeakers, CanSearchSpeakers);
 
         public RelayCommand ConnectAllCommand => new RelayCommand(ConnectAll, CanConnectAll);
 
@@ -600,6 +627,11 @@ namespace AudioShare
         }
 
         private bool CanAddIPSpeaker(object sender)
+        {
+            return IsIP;
+        }
+
+        private bool CanSearchSpeakers(object sender)
         {
             return IsIP;
         }

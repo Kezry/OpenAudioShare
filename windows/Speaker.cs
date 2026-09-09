@@ -2,6 +2,7 @@
 using NAudio.Wave;
 using SharpAdbClient;
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Diagnostics;
@@ -40,8 +41,15 @@ namespace AudioShare
         static Speaker()
         {
             _channels.Add(new NamePair(AudioChannel.Stereo, "立体声"));
-            _channels.Add(new NamePair(AudioChannel.Left, "左声道"));
-            _channels.Add(new NamePair(AudioChannel.Right, "右声道"));
+            _channels.Add(new NamePair(AudioChannel.Left, "前置左"));
+            _channels.Add(new NamePair(AudioChannel.Right, "前置右"));
+            _channels.Add(new NamePair(AudioChannel.Center, "中置"));
+            _channels.Add(new NamePair(AudioChannel.Lfe, "重低音"));
+            _channels.Add(new NamePair(AudioChannel.SideLeft, "环绕左"));
+            _channels.Add(new NamePair(AudioChannel.SideRight, "环绕右"));
+            _channels.Add(new NamePair(AudioChannel.BackLeft, "后置左"));
+            _channels.Add(new NamePair(AudioChannel.BackRight, "后置右"));
+            _channels.Add(new NamePair(AudioChannel.BackCenter, "后置中"));
             _channels.Add(new NamePair(AudioChannel.None, "禁用"));
         }
         private TcpClient tcpClient = null;
@@ -236,17 +244,9 @@ namespace AudioShare
                     _ = _dispatcher.InvokeAsync(() =>
                     {
                         AudioManager.StartCapture();
-                        switch (_channel)
+                        if (_channel != AudioChannel.None)
                         {
-                            case AudioChannel.Left:
-                                AudioManager.LeftAvailable += SendAudioData;
-                                break;
-                            case AudioChannel.Right:
-                                AudioManager.RightAvailable += SendAudioData;
-                                break;
-                            case AudioChannel.Stereo:
-                                AudioManager.StereoAvailable += SendAudioData;
-                                break;
+                            AudioManager.AudioFrameAvailable += SendAudioData;
                         }
                         AudioManager.Stoped += OnAudioStoped;
                     });
@@ -289,28 +289,120 @@ namespace AudioShare
 
         private readonly object writeLock = new object();
         private bool isBusy = false;
-        private async void SendAudioData(object sender, WaveInEventArgs e)
+        private int[] _extractIndices;
+        private int _extractKey = -1;
+        private byte[] _extractBuffer;
+        private AudioChannel _missingChannelLogged = AudioChannel.None;
+
+        private static readonly Dictionary<AudioChannel, int> ChannelBits = new Dictionary<AudioChannel, int>
+        {
+            { AudioChannel.Left, 0x1 },          // FRONT_LEFT
+            { AudioChannel.Right, 0x2 },         // FRONT_RIGHT
+            { AudioChannel.Center, 0x4 },        // FRONT_CENTER
+            { AudioChannel.Lfe, 0x8 },           // LOW_FREQUENCY
+            { AudioChannel.BackLeft, 0x10 },     // BACK_LEFT
+            { AudioChannel.BackRight, 0x20 },    // BACK_RIGHT
+            { AudioChannel.BackCenter, 0x100 },  // BACK_CENTER
+            { AudioChannel.SideLeft, 0x200 },    // SIDE_LEFT
+            { AudioChannel.SideRight, 0x400 },   // SIDE_RIGHT
+        };
+
+        private static int IndexOfBit(int mask, int bit, int channels)
+        {
+            if ((mask & bit) == 0) return -1;
+            int index = 0;
+            for (int m = 1; m < bit; m <<= 1)
+            {
+                if ((mask & m) != 0) index++;
+            }
+            return index < channels ? index : -1;
+        }
+
+        private int[] ResolveChannelIndices(int channels, int mask)
+        {
+            if (_channel == AudioChannel.None) return null;
+            if (_channel == AudioChannel.Stereo)
+            {
+                int frontLeft = IndexOfBit(mask, 0x1, channels);
+                int frontRight = IndexOfBit(mask, 0x2, channels);
+                if (frontLeft < 0 && frontRight < 0 && channels > 0)
+                {
+                    // Layout without front pair (e.g. mono mix): fold it to both.
+                    frontLeft = 0;
+                    frontRight = Math.Min(1, channels - 1);
+                }
+                if (frontLeft < 0 || frontRight < 0) return null;
+                return new[] { frontLeft, frontRight };
+            }
+            if (!ChannelBits.TryGetValue(_channel, out int bit)) return null;
+            int index = IndexOfBit(mask, bit, channels);
+            if (index < 0)
+            {
+                if (_missingChannelLogged != _channel)
+                {
+                    _missingChannelLogged = _channel;
+                    Logger.Error($"{Display}: channel {_channel} not present in capture layout ({channels}ch mask=0x{mask:X}), muted");
+                }
+                return null;
+            }
+            return new[] { index };
+        }
+
+        private async void SendAudioData(object sender, AudioFrameEventArgs e)
         {
             lock (writeLock)
             {
                 if (isBusy) return;
                 isBusy = true;
             }
-            if (!(await WriteTcp(e.Buffer, e.BytesRecorded, true)))
+            try
             {
-                if (!_retried && Connected)
+                int frameBytes = e.Channels * 2;
+                int frames = e.BytesRecorded / frameBytes;
+                int key = (e.Channels << 16) ^ e.ChannelMask;
+                if (key != _extractKey)
                 {
-                    _retried = true;
-                    await Connect(true);
+                    _extractKey = key;
+                    _extractIndices = ResolveChannelIndices(e.Channels, e.ChannelMask);
                 }
-                else
+                if (_extractIndices == null || frames <= 0) return;
+                int stride = _extractIndices.Length;
+                int needed = frames * stride * 2;
+                if (_extractBuffer == null || _extractBuffer.Length < needed)
                 {
-                    await DisConnect(true);
+                    _extractBuffer = new byte[needed];
+                }
+                for (int f = 0; f < frames; f++)
+                {
+                    int sourceFrame = f * frameBytes;
+                    int targetFrame = f * stride * 2;
+                    for (int c = 0; c < stride; c++)
+                    {
+                        int source = sourceFrame + _extractIndices[c] * 2;
+                        int target = targetFrame + c * 2;
+                        _extractBuffer[target] = e.Buffer[source];
+                        _extractBuffer[target + 1] = e.Buffer[source + 1];
+                    }
+                }
+                if (!(await WriteTcp(_extractBuffer, needed, true)))
+                {
+                    if (!_retried && Connected)
+                    {
+                        _retried = true;
+                        await Connect(true);
+                    }
+                    else
+                    {
+                        await DisConnect(true);
+                    }
                 }
             }
-            lock (writeLock)
+            finally
             {
-                isBusy = false;
+                lock (writeLock)
+                {
+                    isBusy = false;
+                }
             }
         }
 
@@ -415,18 +507,7 @@ namespace AudioShare
             {
                 try
                 {
-                    switch (ChannelSelected.Key)
-                    {
-                        case AudioChannel.Left:
-                            AudioManager.LeftAvailable -= SendAudioData;
-                            break;
-                        case AudioChannel.Right:
-                            AudioManager.RightAvailable -= SendAudioData;
-                            break;
-                        case AudioChannel.Stereo:
-                            AudioManager.StereoAvailable -= SendAudioData;
-                            break;
-                    }
+                    AudioManager.AudioFrameAvailable -= SendAudioData;
                 }
                 catch (Exception)
                 {

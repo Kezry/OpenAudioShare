@@ -52,6 +52,8 @@ import java.util.concurrent.Executors;
 public class TcpService extends NotificationService {
     private static final String TAG = "AudioShareService";
     private static final String HEAD = "picapico-audio-share";
+    private static final String DISCOVER_PROBE = HEAD + "-find";
+    private static final int DISCOVERY_PORT = 58270;
     public  static final String CHANNEL_ID = "com.picapico.audio_share";
     public static int NOTIFICATION_ID = 1;
     private final IBinder binder = new TcpBinder();
@@ -104,6 +106,7 @@ public class TcpService extends NotificationService {
         Log.i(TAG, "Service on created");
         new Thread(this::startLocalServer).start();
         new Thread(this::startServer).start();
+        new Thread(this::startDiscoveryListener).start();
         mSharedPreferences = getSharedPreferences("app", Context.MODE_PRIVATE);
         if(mSharedPreferences.getBoolean("http-server", true)){
             this.startHttpServer();
@@ -329,6 +332,31 @@ public class TcpService extends NotificationService {
         httpServer.setAssetManager(getAssets());
         httpServer.setVersionName(mVersionName);
     }
+    private void startDiscoveryListener(){
+        try {
+            DatagramSocket socket = new DatagramSocket(DISCOVERY_PORT);
+            socket.setBroadcast(true);
+            byte[] buffer = new byte[64];
+            while (!socket.isClosed()) {
+                try {
+                    DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
+                    socket.receive(packet);
+                    String message = new String(packet.getData(), 0, packet.getLength()).trim();
+                    if (DISCOVER_PROBE.equals(message)) {
+                        String reply = HEAD + "@" + getListenPort() + "@" + getHttpPort();
+                        byte[] data = reply.getBytes();
+                        socket.send(new DatagramPacket(data, data.length, packet.getAddress(), packet.getPort()));
+                        Log.i(TAG, "replied discovery probe to " + packet.getAddress().getHostAddress());
+                    }
+                } catch (Exception e) {
+                    Log.e(TAG, "discovery receive error: " + e);
+                }
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "start discovery listener error: " + e);
+        }
+    }
+
     private void startServer(){
         Log.i(TAG, "prepare tcp start server");
         try {

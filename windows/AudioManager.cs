@@ -3,35 +3,90 @@ using NAudio.Wave;
 using System;
 using System.Threading;
 using System.Threading.Tasks;
-using System.Windows.Threading;
 
 namespace AudioShare
 {
+    public class AudioFrameEventArgs : EventArgs
+    {
+        public byte[] Buffer { get; }
+        public int BytesRecorded { get; }
+        public int Channels { get; }
+        public int ChannelMask { get; }
+
+        public AudioFrameEventArgs(byte[] buffer, int bytesRecorded, int channels, int channelMask)
+        {
+            Buffer = buffer;
+            BytesRecorded = bytesRecorded;
+            Channels = channels;
+            ChannelMask = channelMask;
+        }
+    }
+
     public class AudioManager
     {
-        public static event EventHandler<WaveInEventArgs> StereoAvailable;
-        public static event EventHandler<WaveInEventArgs> LeftAvailable;
-        public static event EventHandler<WaveInEventArgs> RightAvailable;
+        public static event EventHandler<AudioFrameEventArgs> AudioFrameAvailable;
         public static event EventHandler Stoped;
         public static event EventHandler<int> OnVolumeNotification;
         public static event EventHandler OnAudioResumed;
 
         private static WasapiLoopbackCapture _capture;
         private static MMDevice _device;
-        private static readonly Dispatcher _dispatcher;
         private static int _sampleRate;
-        private static byte[] _leftBuffer;
-        private static byte[] _rightBuffer;
+        private static int _channelCount = 2;
+        private static int _channelMask = 0x3;
         private static bool _wasSilent = true;
 
-        static AudioManager()
+        public static int SampleRate => _sampleRate;
+        public static int Channels => _channelCount;
+        public static int ChannelMask => _channelMask;
+
+        public static int DefaultMask(int channels)
         {
-            _dispatcher = Dispatcher.CurrentDispatcher;
+            // Standard Microsoft channel order when the mask is unavailable.
+            switch (channels)
+            {
+                case 1: return 0x4;                                                     // FC
+                case 2: return 0x3;                                                     // FL FR
+                case 3: return 0x7;                                                     // FL FR FC
+                case 4: return 0x33;                                                    // FL FR BL BR
+                case 5: return 0x37;                                                    // FL FR FC BL BR
+                case 6: return 0x3F;                                                    // FL FR FC LFE BL BR
+                case 7: return 0x13F;                                                   // FL FR FC LFE BC BL BR
+                case 8: return 0x63F;                                                   // FL FR FC LFE BL BR SL SR
+                default:
+                    int mask = 0;
+                    for (int i = 0; i < channels; i++) mask |= 1 << i;
+                    return mask;
+            }
         }
 
-        private AudioManager() { }
-
-        public static int SampleRate => _sampleRate;
+        private static void ReadMixFormat()
+        {
+            _channelCount = 2;
+            _channelMask = 0x3;
+            if (_device == null) return;
+            try
+            {
+                using (var client = _device.AudioClient)
+                {
+                    var mix = client.MixFormat;
+                    if (mix != null && mix.Channels > 0 && mix.Channels <= 18)
+                    {
+                        _channelCount = mix.Channels;
+                    }
+                    if (mix is WaveFormatExtensible ext)
+                    {
+                        _channelMask = (int)ext.ChannelMask;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Error("read mix format error: " + ex.Message);
+            }
+            if (_channelMask == 0) _channelMask = DefaultMask(_channelCount);
+            Logger.Info($"capture format: {_sampleRate}Hz {_channelCount}ch mask=0x{_channelMask:X}");
+        }
 
         public static void SetDevice(MMDevice device, int sampleRate)
         {
@@ -58,10 +113,14 @@ namespace AudioShare
                 _capture = null;
                 return;
             }
+            ReadMixFormat();
+            // Capture the device's own channel layout (2.1/5.1/7.1...) instead of
+            // forcing a stereo downmix, so each channel can be routed to its own
+            // playback device. WASAPI auto-converts rate/depth/channels.
             _capture = new WasapiLoopbackCapture(device);
-            _capture.WaveFormat = new WaveFormat(sampleRate, 16, 2);
+            _capture.WaveFormat = new WaveFormat(_sampleRate, 16, _channelCount);
             _capture.DataAvailable += SendAudioData;
-            if (StereoAvailable != null || LeftAvailable != null || RightAvailable != null)
+            if (AudioFrameAvailable != null)
             {
                 StartCapture();
             }
@@ -120,40 +179,7 @@ namespace AudioShare
                 _wasSilent = false;
                 OnAudioResumed?.Invoke(null, EventArgs.Empty);
             }
-            Logger.Debug("set audio data start");
-            StereoAvailable?.Invoke(null, e);
-            bool canLeft = LeftAvailable != null;
-            bool canRight = RightAvailable != null;
-            if (canLeft || canRight)
-            {
-                int half = e.BytesRecorded / 2;
-                if (_leftBuffer == null || _leftBuffer.Length < half)
-                {
-                    _leftBuffer = new byte[half];
-                    _rightBuffer = new byte[half];
-                }
-                for (int i = 0, j = 0;
-                    j < half;
-                    i += 4, j += 2)
-                {
-                    if (canLeft)
-                    {
-                        _leftBuffer[j] = e.Buffer[i];
-                        _leftBuffer[j + 1] = e.Buffer[i + 1];
-                    }
-                    if (canRight)
-                    {
-                        _rightBuffer[j] = e.Buffer[i + 2];
-                        _rightBuffer[j + 1] = e.Buffer[i + 3];
-                    }
-                }
-                _dispatcher.InvokeAsync(() =>
-                {
-                    if (canLeft) LeftAvailable?.Invoke(null, new WaveInEventArgs(_leftBuffer, half));
-                    if (canRight) RightAvailable?.Invoke(null, new WaveInEventArgs(_rightBuffer, half));
-                });
-            }
-            Logger.Debug("set audio data end");
+            AudioFrameAvailable?.Invoke(null, new AudioFrameEventArgs(e.Buffer, e.BytesRecorded, _channelCount, _channelMask));
         }
     }
 }

@@ -181,8 +181,13 @@
                                     </DataTemplate>
                                 </ListView.ItemTemplate>
                             </ListView>
-                            <ui:Button Appearance="Info" Height="30" Width="400" Content="{DynamicResource add}" Command="{Binding AddIPSpeakerCommand}"
-                            Visibility="{Binding AddIPSpeakerVisible, Converter={StaticResource BooleanToVisibility}, Mode=OneWay}" />
+                            <StackPanel Orientation="Horizontal">
+                                <ui:Button Appearance="Primary" Height="30" Width="195" Content="{DynamicResource searchSpeaker}"
+                                           Command="{Binding SearchSpeakersCommand}"
+                                           Visibility="{Binding AddIPSpeakerVisible, Converter={StaticResource BooleanToVisibility}, Mode=OneWay}" />
+                                <ui:Button Appearance="Info" Height="30" Width="195" Margin="10 0 0 0" Content="{DynamicResource add}" Command="{Binding AddIPSpeakerCommand}"
+                                Visibility="{Binding AddIPSpeakerVisible, Converter={StaticResource BooleanToVisibility}, Mode=OneWay}" />
+                            </StackPanel>
                         </StackPanel>
                     </ScrollViewer>
 
