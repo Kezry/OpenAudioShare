@@ -613,6 +613,13 @@ namespace AudioShare
             return await task;
         }
 
+        private static async Task WithTimeout(Task task, int timeoutMs, string action)
+        {
+            Task finished = await Task.WhenAny(task, Task.Delay(timeoutMs));
+            if (finished != task) throw new TimeoutException(action + " timeout");
+            await task;
+        }
+
         private async Task RequestTcp(Command command, byte[] data = null, bool force=false)
         {
             if (command == Command.None ||
