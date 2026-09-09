@@ -30,4 +30,5 @@ public interface IMediaPlayer {
     boolean isPlaying();
     void getRealtimePosition(RealtimePositionCallback callback);
     void setMediaChangedListener(Listener listener);
+    void release();
 }

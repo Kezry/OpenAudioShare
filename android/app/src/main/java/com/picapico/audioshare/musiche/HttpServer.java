@@ -130,6 +130,7 @@ public class HttpServer implements AudioPlayer.OnChangedListener {
             mBroadcastReceiver.stop();
             mBroadcastReceiver = null;
         }
+        mAudioPlayer.release();
         mServer = null;
     }
     public static String getMarketingName() {
@@ -618,7 +619,11 @@ public class HttpServer implements AudioPlayer.OnChangedListener {
                 response.send("application/json", "{\"data\":false}");
                 return;
             }
-            RemoteClient localClient = Objects.requireNonNull(mRemoteClients.get(client.getAddress()));
+            RemoteClient localClient = mRemoteClients.get(client.getAddress());
+            if(localClient == null) {
+                response.send("application/json", "{\"data\":false}");
+                return;
+            }
             localClient.setChannel(client.getChannel());
             if(client.getChannel() < 0) {
                 localClient.send(RemoteMessage.of(RemoteMessage.MessageTypePause));
@@ -633,7 +638,9 @@ public class HttpServer implements AudioPlayer.OnChangedListener {
                     PlayerVisualizer.updateTimeMillis();
                 }
             }
-            mPreferences.edit().putInt("channel-"+localClient.getAddress(), localClient.getChannel()).apply();
+            if(mPreferences != null) {
+                mPreferences.edit().putInt("channel-"+localClient.getAddress(), localClient.getChannel()).apply();
+            }
             response.send("application/json", "{\"data\":true}");
         } catch (Exception ignore) {
             response.send("application/json", "{\"data\":false}");

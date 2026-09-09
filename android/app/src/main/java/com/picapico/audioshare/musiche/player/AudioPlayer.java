@@ -410,8 +410,16 @@ public class AudioPlayer implements OnActionReceiveListener, IMediaPlayer.Listen
             mediaPlayer.seekTo(pos+20);
         }
     }
+    public void setMediaChangedListener(OnChangedListener listener) {
+        changedListener = listener;
+    }
+
+    public void release() {
+        mediaPlayer.release();
+    }
+
     public void setVolume(int percent){
-        if(mAudioManager == null || volume == percent) return;
+        if(mAudioManager == null) return;
         volume = percent;
         double percentDouble = percent*1.0/100;
         percent = (int) (maxAudioVolume * percentDouble);

@@ -51,6 +51,18 @@ public class ExoPlayer implements IMediaPlayer, Player.Listener {
     }
 
     @Override
+    public void release() {
+        handler.removeCallbacks(updateProgressAction);
+        handler.post(() -> {
+            try {
+                mediaPlayer.release();
+            } catch (Exception e) {
+                Log.e(TAG, "release error", e);
+            }
+        });
+    }
+
+    @Override
     public void play() {
         if(isPlaying()) return;
         handler.post(() -> {
