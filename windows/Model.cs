@@ -369,19 +369,26 @@ namespace AudioShare
             }
         }
 
-        public RelayCommand RefreshAudiosCommand => new RelayCommand(RefreshAudios, CanRefreshAudios);
+        private RelayCommand _refreshAudiosCommand;
+        public RelayCommand RefreshAudiosCommand => _refreshAudiosCommand ?? (_refreshAudiosCommand = new RelayCommand(RefreshAudios, CanRefreshAudios));
 
-        public RelayCommand RefreshSpeakersCommand => new RelayCommand(RefreshSpeakers, CanRefreshSpeakers);
+        private RelayCommand _refreshSpeakersCommand;
+        public RelayCommand RefreshSpeakersCommand => _refreshSpeakersCommand ?? (_refreshSpeakersCommand = new RelayCommand(RefreshSpeakers, CanRefreshSpeakers));
 
-        public RelayCommand AddIPSpeakerCommand => new RelayCommand(AddIPSpeaker, CanAddIPSpeaker);
+        private RelayCommand _addIPSpeakerCommand;
+        public RelayCommand AddIPSpeakerCommand => _addIPSpeakerCommand ?? (_addIPSpeakerCommand = new RelayCommand(AddIPSpeaker, CanAddIPSpeaker));
 
-        public RelayCommand SearchSpeakersCommand => new RelayCommand(SearchSpeakers, CanSearchSpeakers);
+        private RelayCommand _searchSpeakersCommand;
+        public RelayCommand SearchSpeakersCommand => _searchSpeakersCommand ?? (_searchSpeakersCommand = new RelayCommand(SearchSpeakers, CanSearchSpeakers));
 
-        public RelayCommand ConnectAllCommand => new RelayCommand(ConnectAll, CanConnectAll);
+        private RelayCommand _connectAllCommand;
+        public RelayCommand ConnectAllCommand => _connectAllCommand ?? (_connectAllCommand = new RelayCommand(ConnectAll, CanConnectAll));
 
-        public RelayCommand DisconnectAllCommand => new RelayCommand(DisconnectAll, CanDisconnectAll);
+        private RelayCommand _disconnectAllCommand;
+        public RelayCommand DisconnectAllCommand => _disconnectAllCommand ?? (_disconnectAllCommand = new RelayCommand(DisconnectAll, CanDisconnectAll));
 
-        public RelayCommand SyncDevicesCommand => new RelayCommand(SyncDevices, CanSyncDevices);
+        private RelayCommand _syncDevicesCommand;
+        public RelayCommand SyncDevicesCommand => _syncDevicesCommand ?? (_syncDevicesCommand = new RelayCommand(SyncDevices, CanSyncDevices));
 
         public bool AutoConnect
         {

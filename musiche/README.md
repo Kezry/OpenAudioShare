@@ -15,6 +15,7 @@ Android 的 HTTP 服务（`HttpServer.java`）在 CI 中执行
 - `web/src/components/MusicList.vue`：非高亮场景改为文本插值渲染曲名，
   不再走 `v-html`。
 - `web/src/components/Playlist.vue`：歌单名改为文本插值渲染。
+- `web/src/views/playlist.vue`：歌单描述改为文本插值渲染。
 - `web/package.json`：修正从上游带入的错误元数据（description/repository 指向 DevToys）。
 
 上游更新如需同步，请基于上游新提交重新套用上述修改。

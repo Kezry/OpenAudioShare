@@ -218,20 +218,42 @@ namespace AudioShare
             await RunCommandAsync(adbPath, "devices");
         }
 
+        private static ImageSource _appIcon;
         public static ImageSource AppIcon
         {
             get
             {
-                Icon appIcon = Icon.ExtractAssociatedIcon(System.Reflection.Assembly.GetExecutingAssembly().Location);
-                if (appIcon != null)
+                // Binding evaluates this repeatedly; extract the icon once and
+                // dispose the GDI handle immediately after conversion.
+                if (_appIcon != null) return _appIcon;
+                try
                 {
-                    return Imaging.CreateBitmapSourceFromHIcon(
-                        appIcon.Handle,
-                        Int32Rect.Empty,
-                        BitmapSizeOptions.FromEmptyOptions());
+                    string exePath = Process.GetCurrentProcess()?.MainModule?.FileName;
+                    if (string.IsNullOrWhiteSpace(exePath))
+                    {
+                        // Empty under PublishSingleFile; fall back to the assembly path.
+                        exePath = System.Reflection.Assembly.GetExecutingAssembly().Location;
+                    }
+                    if (!string.IsNullOrWhiteSpace(exePath) && File.Exists(exePath))
+                    {
+                        using (Icon appIcon = Icon.ExtractAssociatedIcon(exePath))
+                        {
+                            if (appIcon != null)
+                            {
+                                _appIcon = Imaging.CreateBitmapSourceFromHIcon(
+                                    appIcon.Handle,
+                                    Int32Rect.Empty,
+                                    BitmapSizeOptions.FromEmptyOptions());
+                                _appIcon?.Freeze();
+                            }
+                        }
+                    }
                 }
-
-                return null;
+                catch (Exception ex)
+                {
+                    Logger.Error("load app icon error: " + ex.Message);
+                }
+                return _appIcon;
             }
         }
 

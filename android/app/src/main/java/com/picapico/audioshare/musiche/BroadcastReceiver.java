@@ -21,7 +21,9 @@ public class BroadcastReceiver {
     public void setRemoteServerReceivedListener(OnRemoteServerReceivedListener listener){
         remoteServerReceivedListener = listener;
     }
+    private final Object socketLock = new Object();
     private DatagramSocket socket = null;
+    private boolean started = false;
     private boolean ignoreError = false;
     private final String localAddresses;
 
@@ -30,31 +32,44 @@ public class BroadcastReceiver {
     }
 
     public void start(){
-        if(socket != null) return;
+        synchronized (socketLock) {
+            if(started) return;
+            started = true;
+        }
         new Thread(this::startReceiveBroadcast).start();
     }
 
     private void startReceiveBroadcast(){
+        DatagramSocket local = null;
         for (int port = 58261; port < 58271; port++) {
             try{
-                socket = new DatagramSocket(port);
-                socket.setBroadcast(true);
+                local = new DatagramSocket(port);
+                local.setBroadcast(true);
                 break;
-            }catch (Exception ignore){ }
+            }catch (Exception ignore){
+                local = null;
+            }
         }
-        if(socket == null) {
+        if(local == null) {
             Log.w(TAG, "cannot listen udp");
+            synchronized (socketLock) {
+                started = false;
+            }
             return;
+        }
+        synchronized (socketLock) {
+            socket = local;
         }
         byte[] buffer = new byte[128];
         DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
         try{
             while (true) {
-                socket.receive(packet);
+                local.receive(packet);
                 if(remoteServerReceivedListener == null) continue;
                 InetAddress packageAddress = packet.getAddress();
+                // Exact token match: "-1.2.3.4-" must not match "21.2.3.4".
                 if(packageAddress == null || packageAddress.getHostAddress() == null
-                        || localAddresses.contains(packageAddress.getHostAddress())){
+                        || localAddresses.contains("-" + packageAddress.getHostAddress() + "-")){
                     continue;
                 }
                 String[] messages = new String(packet.getData(), 0, packet.getLength()).split("@");
@@ -70,12 +85,17 @@ public class BroadcastReceiver {
 
     public void stop(){
         ignoreError = true;
-        if(socket != null){
+        DatagramSocket current;
+        synchronized (socketLock) {
+            current = socket;
+            socket = null;
+            started = false;
+        }
+        if(current != null){
             try {
-                socket.close();
+                current.close();
             } catch (Exception ignore) { }
         }
-        socket = null;
     }
 
     private String getIPV4(){

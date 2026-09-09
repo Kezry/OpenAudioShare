@@ -144,11 +144,14 @@ namespace AudioShare
             });
         }
 
-        public RelayCommand ConnectCommand => new RelayCommand(Connect, CanConnect);
+        private RelayCommand _connectCommand;
+        public RelayCommand ConnectCommand => _connectCommand ?? (_connectCommand = new RelayCommand(Connect, CanConnect));
 
-        public RelayCommand DisConnectCommand => new RelayCommand(DisConnect, CanDisConnect);
+        private RelayCommand _disConnectCommand;
+        public RelayCommand DisConnectCommand => _disConnectCommand ?? (_disConnectCommand = new RelayCommand(DisConnect, CanDisConnect));
 
-        public RelayCommand RemoveCommand => new RelayCommand(RemoveSpeaker, CanRemoveSpeaker);
+        private RelayCommand _removeCommand;
+        public RelayCommand RemoveCommand => _removeCommand ?? (_removeCommand = new RelayCommand(RemoveSpeaker, CanRemoveSpeaker));
 
         public void SetVolume(int volume)
         {

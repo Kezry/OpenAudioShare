@@ -171,9 +171,20 @@ namespace AudioShare
         {
             notifyIcon = new NotifyIcon()
             {
-                Text = "Audio Share",
-                Icon = System.Drawing.Icon.ExtractAssociatedIcon(GetExePath())
+                Text = "Audio Share"
             };
+            try
+            {
+                string exePath = GetExePath();
+                if (!string.IsNullOrWhiteSpace(exePath))
+                {
+                    notifyIcon.Icon = System.Drawing.Icon.ExtractAssociatedIcon(exePath);
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Error("load notify icon error: " + ex.Message);
+            }
             notifyIcon.Click += OnNotifyIconClick;
             notifyIcon.Visible = true;
         }

@@ -120,6 +120,12 @@ public class HttpServer implements AudioPlayer.OnChangedListener {
         }catch (Exception e){
             Log.e(TAG, "stop server error");
         }
+        synchronized (mDelayPauseLock) {
+            if(delayPauseTimer != null){
+                delayPauseTimer.cancel();
+                delayPauseTimer = null;
+            }
+        }
         if(mBroadcastReceiver != null) {
             mBroadcastReceiver.stop();
             mBroadcastReceiver = null;
@@ -150,8 +156,8 @@ public class HttpServer implements AudioPlayer.OnChangedListener {
     //endregion
 
     //region RemoteServerMessage
-    private boolean isPositionSynchronized = false;
-    private boolean isPositionSynchronizing = false;
+    private volatile boolean isPositionSynchronized = false;
+    private volatile boolean isPositionSynchronizing = false;
     private void onRemoteServerMessage(String message, String address){
         if (BuildConfig.DEBUG) Log.d(TAG, "receive remote server message: " + message);
         RemoteMessage msg = RemoteMessage.of(message);
@@ -476,26 +482,29 @@ public class HttpServer implements AudioPlayer.OnChangedListener {
         }
         response.end();
     };
+    private final Object mDelayPauseLock = new Object();
     private Timer delayPauseTimer = null;
     private final HttpServerRequestCallback delayExit = (request, response) -> {
-        String delayMinuteStr = String.valueOf(request.getBody().get());
+        long delayMinute;
         try{
-            long delayMinute = Integer.parseInt(delayMinuteStr);
+            delayMinute = Integer.parseInt(String.valueOf(request.getBody().get()).trim());
+        }catch (NumberFormatException ignore){
+            delayMinute = -1;
+        }
+        synchronized (mDelayPauseLock) {
             if(delayPauseTimer != null){
                 delayPauseTimer.cancel();
                 delayPauseTimer = null;
             }
             if(delayMinute > 0){
-                delayPauseTimer = new Timer();
+                delayPauseTimer = new Timer("musiche-delay-pause");
                 delayPauseTimer.schedule(new TimerTask() {
                     @Override
                     public void run() {
                         mAudioPlayer.pause();
                     }
-                }, delayMinute * 60 *1000);
+                }, delayMinute * 60 * 1000L);
             }
-        }catch (Exception ignore){
-            delayPauseTimer = null;
         }
         response.send("");
     };
@@ -533,13 +542,19 @@ public class HttpServer implements AudioPlayer.OnChangedListener {
         response.send(mAudioPlayer.getStatus());
     };
     private final HttpServerRequestCallback progress = (request, response) -> {
-        int progress = Integer.parseInt(request.getBody().get().toString());
-        mAudioPlayer.setProgress(progress);
+        try {
+            int progress = Integer.parseInt(request.getBody().get().toString().trim());
+            mAudioPlayer.setProgress(progress);
+        } catch (NumberFormatException ignore) {
+        }
         response.send(mAudioPlayer.getStatus());
     };
     private final HttpServerRequestCallback volume = (request, response) -> {
-        int volume = Integer.parseInt(request.getBody().get().toString());
-        mAudioPlayer.setVolume(volume);
+        try {
+            int volume = Integer.parseInt(request.getBody().get().toString().trim());
+            mAudioPlayer.setVolume(volume);
+        } catch (NumberFormatException ignore) {
+        }
         response.send(mAudioPlayer.getStatus());
     };
     private final HttpServerRequestCallback status = (request, response) -> response.send(mAudioPlayer.getStatus());

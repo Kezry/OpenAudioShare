@@ -40,8 +40,9 @@ namespace AudioShare
             {
                 _settings = JsonConvert.DeserializeObject<Settings>(File.ReadAllText(_loadPath));
             }
-            catch (Exception)
+            catch (Exception ex)
             {
+                Logger.Error("load settings failed, using defaults: " + ex.Message);
             }
             if (_settings == null) _settings = new Settings();
         }
