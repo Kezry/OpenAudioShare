@@ -4,6 +4,7 @@
     <OutputType>WinExe</OutputType>
     <TargetFrameworks>net6.0-windows10.0.17763.0;net462</TargetFrameworks>
     <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
     <ApplicationIcon>logo.ico</ApplicationIcon>
     <Company>HeHang</Company>
     <Description>AudioShare For Windows</Description>
@@ -19,6 +20,12 @@
 
   <ItemGroup>
     <Content Include="logo.ico" />
+  </ItemGroup>
+
+  <!-- Tray icon (NotifyIcon) needs WinForms; the reference used to arrive
+       transitively via Microsoft-WindowsAPICodePack-Shell. -->
+  <ItemGroup Condition="'$(TargetFramework)' == 'net462'">
+    <Reference Include="System.Windows.Forms" />
   </ItemGroup>
 
   <ItemGroup>
