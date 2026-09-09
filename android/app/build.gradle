@@ -14,7 +14,9 @@ def releaseStoreFile = keystoreProps.getProperty("storeFile") ?: System.getenv("
 def releaseStorePassword = keystoreProps.getProperty("storePassword") ?: System.getenv("SIGNING_STORE_PASSWORD")
 def releaseKeyAlias = keystoreProps.getProperty("keyAlias") ?: System.getenv("SIGNING_KEY_ALIAS")
 def releaseKeyPassword = keystoreProps.getProperty("keyPassword") ?: System.getenv("SIGNING_KEY_PASSWORD")
-def hasReleaseSigning = releaseStoreFile != null && file(releaseStoreFile).exists()
+def hasReleaseSigning = releaseStoreFile != null && releaseStorePassword != null \
+        && releaseKeyAlias != null && releaseKeyPassword != null \
+        && file(releaseStoreFile).exists()
 
 android {
     namespace 'com.picapico.audioshare'
