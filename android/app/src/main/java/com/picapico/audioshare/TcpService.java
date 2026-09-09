@@ -20,6 +20,7 @@ import android.os.Build;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
+import android.os.SystemClock;
 import android.util.Log;
 import android.widget.Toast;
 
@@ -69,12 +70,12 @@ public class TcpService extends NotificationService {
     private HttpServer httpServer;
     private SharedPreferences mSharedPreferences;
     private volatile int playbackDelayMs = 0;
+    private volatile int appliedDelayMs = 0;
     private volatile int pendingDelayChange = 0;
-    private volatile long totalBytesWritten = 0;
-    private int driftPacketCount = 0;
+    private volatile long lastDataTimeMs = 0;
     private int mSampleRate = 44100;
     private int mBytesPerFrame = 4;
-    private static final int DRIFT_TOLERANCE_MS = 100;
+    private static final int RESEED_GAP_MS = 1500;
     private final byte[] _readHeadBuf = new byte[20];
     private final byte[] _readIntBuf = new byte[4];
     private static final byte[] _heartBeatByte = new byte[1];
@@ -83,14 +84,17 @@ public class TcpService extends NotificationService {
         return playbackDelayMs;
     }
 
-    private void setPlaybackDelay(int delayMs) {
+    private void setPlaybackDelay(int delayMs, boolean applyNow) {
         int clamped = Math.max(0, Math.min(delayMs, 500));
         int oldDelay = playbackDelayMs;
         playbackDelayMs = clamped;
-        int delta = clamped - oldDelay;
-        Log.i(TAG, "Playback delay set to " + clamped + "ms (delta=" + delta + "ms)");
-        if (getPlaying() && delta != 0) {
-            pendingDelayChange = delta;
+        if (applyNow && getPlaying() && clamped != appliedDelayMs) {
+            Log.i(TAG, "Playback delay " + oldDelay + "ms -> " + clamped + "ms, applying now");
+            pendingDelayChange = clamped - appliedDelayMs;
+        }else {
+            // Stored only; takes effect when the next track reseeds the backlog,
+            // so playback is never interrupted by background RTT measurements.
+            Log.i(TAG, "Playback delay target " + clamped + "ms (was " + oldDelay + "ms), applied on next track");
         }
     }
     @Override
@@ -204,7 +208,8 @@ public class TcpService extends NotificationService {
         }else if(command == 6) {
             try {
                 int delayMs = readInt(stream);
-                setPlaybackDelay(delayMs);
+                boolean applyNow = stream.read() == 1;
+                setPlaybackDelay(delayMs, applyNow);
             } catch (IOException e) {
                 Log.e(TAG, "read delay error: " + e);
             }
@@ -502,6 +507,8 @@ public class TcpService extends NotificationService {
             if(playbackDelayMs > 0) {
                 try { Thread.sleep(playbackDelayMs); } catch (InterruptedException ignored) {}
             }
+            appliedDelayMs = playbackDelayMs;
+            lastDataTimeMs = SystemClock.elapsedRealtime();
             DataInputStream stream = new DataInputStream(inputStream);
             while (true) {
                 try {
@@ -523,41 +530,33 @@ public class TcpService extends NotificationService {
                     break;
                 }
 
+                long now = SystemClock.elapsedRealtime();
+                boolean afterGap = now - lastDataTimeMs > RESEED_GAP_MS;
+                lastDataTimeMs = now;
+
+                if (afterGap && mAudioTrack != null) {
+                    // A silence gap means the delay backlog has drained; flush any
+                    // stale audio and rebuild it so this track starts aligned with
+                    // the other devices (arrival + configured delay).
+                    Log.i(TAG, "Audio resumed after gap, reseeding delay " + playbackDelayMs + "ms");
+                    try {
+                        mAudioTrack.pause();
+                        mAudioTrack.flush();
+                        mAudioTrack.play();
+                    } catch (Exception e) {
+                        Log.e(TAG, "Reseed flush error: " + e);
+                    }
+                    if(playbackDelayMs > 0) {
+                        try { Thread.sleep(playbackDelayMs); } catch (InterruptedException ignored) {}
+                    }
+                    appliedDelayMs = playbackDelayMs;
+                }
+
                 if (pendingDelayChange != 0) {
                     int change = pendingDelayChange;
                     pendingDelayChange = 0;
-                    int absChange = Math.abs(change);
-                    if (absChange <= 50) {
-                        if (change > 0) {
-                            try {
-                                if (mAudioTrack != null) mAudioTrack.pause();
-                                Thread.sleep(change);
-                                if (mAudioTrack != null) mAudioTrack.play();
-                            } catch (InterruptedException ignored) {}
-                        } else {
-                            try {
-                                if (mAudioTrack != null) {
-                                    mAudioTrack.pause();
-                                    mAudioTrack.flush();
-                                    mAudioTrack.play();
-                                }
-                            } catch (Exception e) {
-                                Log.e(TAG, "Error flushing AudioTrack: " + e);
-                            }
-                        }
-                    } else {
-                        Log.i(TAG, "Smooth delay: " + change + "ms in steps");
-                        int remaining = absChange;
-                        while (remaining > 0) {
-                            int step = Math.min(remaining, 50);
-                            try {
-                                if (mAudioTrack != null) mAudioTrack.pause();
-                                Thread.sleep(step);
-                                if (mAudioTrack != null) mAudioTrack.play();
-                            } catch (InterruptedException ignored) {}
-                            remaining -= step;
-                        }
-                    }
+                    applyDelayChange(change, stream);
+                    appliedDelayMs = playbackDelayMs;
                 }
 
                 if(httpServer != null && httpServer.getAudioPlayer().isPlaying()) {
@@ -566,26 +565,6 @@ public class TcpService extends NotificationService {
                 int written = mAudioTrack.write(buffer, 0, dataLength);
                 if(written < 0) {
                     Log.e(TAG, "AudioTrack write error: " + written);
-                }
-                totalBytesWritten += Math.max(written, 0);
-                driftPacketCount++;
-                if (driftPacketCount >= 50 && mAudioTrack != null) {
-                    driftPacketCount = 0;
-                    try {
-                        long playbackHeadBytes = (long) mAudioTrack.getPlaybackHeadPosition() * mBytesPerFrame;
-                        long bufferedBytes = totalBytesWritten - playbackHeadBytes;
-                        long syncDelayBytes = (long) playbackDelayMs * mSampleRate * mBytesPerFrame / 1000;
-                        long driftThreshold = syncDelayBytes + (long) DRIFT_TOLERANCE_MS * mSampleRate * mBytesPerFrame / 1000;
-                        if (bufferedBytes > driftThreshold) {
-                            Log.w(TAG, "Drift detected: " + bufferedBytes + " bytes buffered (threshold=" + driftThreshold + "), flushing");
-                            mAudioTrack.pause();
-                            mAudioTrack.flush();
-                            mAudioTrack.play();
-                            totalBytesWritten = 0;
-                        }
-                    } catch (Exception e) {
-                        Log.e(TAG, "Drift check error: " + e);
-                    }
                 }
             }
         } catch (Exception e) {
@@ -614,10 +593,45 @@ public class TcpService extends NotificationService {
         }
     }
 
+    private void applyDelayChange(int changeMs, InputStream stream) {
+        Log.i(TAG, "Applying delay change: " + changeMs + "ms");
+        if (changeMs > 0) {
+            // Increase: pause playback for the delta so the backlog grows into it.
+            try {
+                if (mAudioTrack != null) mAudioTrack.pause();
+                Thread.sleep(changeMs);
+                if (mAudioTrack != null) mAudioTrack.play();
+            } catch (InterruptedException ignored) {
+                try {
+                    if (mAudioTrack != null) mAudioTrack.play();
+                } catch (Exception ignored2) {
+                }
+            } catch (Exception e) {
+                Log.e(TAG, "Delay increase error: " + e);
+            }
+        }else {
+            // Decrease: discard exactly the delta worth of audio from the stream,
+            // so playback moves ahead without dropping the whole buffer.
+            long skipTotal = (long) -changeMs * mSampleRate * mBytesPerFrame / 1000;
+            try {
+                long skipped = 0;
+                byte[] scratch = new byte[4096];
+                while (skipped < skipTotal) {
+                    int n = stream.read(scratch, 0, (int) Math.min(scratch.length, skipTotal - skipped));
+                    if (n < 0) break;
+                    skipped += n;
+                }
+                Log.i(TAG, "Skipped " + skipped + " bytes to reduce delay by " + -changeMs + "ms");
+            } catch (Exception e) {
+                Log.e(TAG, "Delay decrease error: " + e);
+            }
+        }
+    }
+
     private void stopAudio(){
         pendingDelayChange = 0;
-        totalBytesWritten = 0;
-        driftPacketCount = 0;
+        appliedDelayMs = 0;
+        lastDataTimeMs = 0;
         try {
             if(mAudioTrack != null) {
                 mAudioTrack.pause();

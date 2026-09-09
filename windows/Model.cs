@@ -74,7 +74,9 @@ namespace AudioShare
             catch (TaskCanceledException) { }
         }
 
-        private async Task MeasureAndSyncDevices(List<Speaker> devices)
+        private const int SyncHysteresisMs = 15;
+
+        private async Task MeasureAndSyncDevices(List<Speaker> devices, bool applyNow = false)
         {
             await Task.WhenAll(devices.Select(s => s.MeasureLatencyAsync()));
             var validDevices = devices.Where(s => s.LastRTT > 0).ToList();
@@ -83,13 +85,16 @@ namespace AudioShare
             foreach (var speaker in validDevices)
             {
                 int delayMs = maxRTT - speaker.LastRTT;
-                if (delayMs != speaker.LastSentDelay)
+                // Measurement noise must not trigger a retune on every track change;
+                // only significant shifts are sent, and automatic ones take effect at
+                // the next track when each device rebuilds its delay backlog.
+                if (Math.Abs(delayMs - speaker.LastSentDelay) >= SyncHysteresisMs)
                 {
-                    await speaker.SetDelay(delayMs);
+                    await speaker.SetDelay(delayMs, applyNow);
                     speaker.LastSentDelay = delayMs;
                 }
             }
-            Logger.Info($"Multi-device sync: maxRTT={maxRTT}ms, devices={validDevices.Count}");
+            Logger.Info($"Multi-device sync: maxRTT={maxRTT}ms, devices={validDevices.Count}, applyNow={applyNow}");
         }
 
         private void OnToastActivated(ToastNotificationActivatedEventArgsCompat e)
@@ -384,7 +389,7 @@ namespace AudioShare
             var connected = Speakers.Where(s => s.Connected).ToList();
             if (connected.Count >= 2)
             {
-                await MeasureAndSyncDevices(connected);
+                await MeasureAndSyncDevices(connected, applyNow: true);
             }
         }
 

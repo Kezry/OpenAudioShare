@@ -627,10 +627,13 @@ namespace AudioShare
             }
         }
 
-        public async Task SetDelay(int delayMs)
+        public async Task SetDelay(int delayMs, bool applyNow = false)
         {
             if (delayMs < 0) delayMs = 0;
-            await RequestTcp(Command.SetDelay, BitConverter.GetBytes(delayMs));
+            byte[] data = new byte[5];
+            BitConverter.GetBytes(delayMs).CopyTo(data, 0);
+            data[4] = (byte)(applyNow ? 1 : 0);
+            await RequestTcp(Command.SetDelay, data);
         }
 
         private void OnPropertyChanged(string propertyName)
