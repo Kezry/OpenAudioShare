@@ -1,6 +1,7 @@
 ﻿using NAudio.CoreAudioApi;
 using NAudio.Wave;
 using System;
+using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -74,10 +75,8 @@ namespace AudioShare
                     {
                         _channelCount = mix.Channels;
                     }
-                    if (mix is WaveFormatExtensible ext)
-                    {
-                        _channelMask = (int)ext.ChannelMask;
-                    }
+                    int mask = ReadChannelMask(mix);
+                    if (mask != 0) _channelMask = mask;
                 }
             }
             catch (Exception ex)
@@ -86,6 +85,30 @@ namespace AudioShare
             }
             if (_channelMask == 0) _channelMask = DefaultMask(_channelCount);
             Logger.Info($"capture format: {_sampleRate}Hz {_channelCount}ch mask=0x{_channelMask:X}");
+        }
+
+        private static int ReadChannelMask(WaveFormat format)
+        {
+            // NAudio 2.x keeps dwChannelMask private; it sits at offset 20 in the
+            // serialized WAVEFORMATEXTENSIBLE structure.
+            try
+            {
+                if (format == null) return 0;
+                using (var ms = new MemoryStream())
+                using (var writer = new BinaryWriter(ms))
+                {
+                    format.Serialize(writer);
+                    var bytes = ms.ToArray();
+                    if (bytes.Length >= 24)
+                    {
+                        return BitConverter.ToInt32(bytes, 20);
+                    }
+                }
+            }
+            catch (Exception)
+            {
+            }
+            return 0;
         }
 
         public static void SetDevice(MMDevice device, int sampleRate)
