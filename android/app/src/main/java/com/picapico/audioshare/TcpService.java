@@ -46,8 +46,6 @@ import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.Timer;
 import java.util.TimerTask;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 
 public class TcpService extends NotificationService {
     private static final String TAG = "AudioShareService";
@@ -67,7 +65,6 @@ public class TcpService extends NotificationService {
 
     private boolean isWriting = false;
     private WakeLockManager mWakeLockManager;
-    private final ExecutorService mExecutorService = Executors.newSingleThreadExecutor();
     private final Handler mHandler = new Handler(Looper.getMainLooper());
     private HttpServer httpServer;
     private SharedPreferences mSharedPreferences;

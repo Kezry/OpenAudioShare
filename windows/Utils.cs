@@ -151,11 +151,6 @@ namespace AudioShare
             return receiver.ToString() ?? string.Empty;
         }
 
-        public static string GetAdbPath(this IAdbClient client)
-        {
-            return FindAdbPath();
-        }
-
         public static void RemoveRemoteForward(this IAdbClient client, DeviceData device, string remote)
         {
             if (device == null) return;
