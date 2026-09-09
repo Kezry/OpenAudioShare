@@ -402,6 +402,13 @@ public class TcpService extends NotificationService {
         isPlaying = playing;
     }
 
+    /** Atomically claims playback; two concurrent connections must not both play. */
+    public synchronized boolean tryStartPlaying() {
+        if (isPlaying) return false;
+        isPlaying = true;
+        return true;
+    }
+
     private synchronized void setPlayerCloser(Closeable closer) {
         playerCloser = closer;
     }
@@ -474,8 +481,7 @@ public class TcpService extends NotificationService {
     }
 
     private void playAudio(int sampleRateInHz, int channelConfig, int audioEncoding, int bufferSizeInBytes, Closeable closer, InputStream inputStream, OutputStream outputStream){
-        if(getPlaying()) return;
-        setPlaying(true);
+        if(!tryStartPlaying()) return;
         setPlayerCloser(closer);
         if(mListener != null){
             mListener.onMessage();

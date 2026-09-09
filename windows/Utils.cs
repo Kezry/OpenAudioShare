@@ -41,13 +41,23 @@ namespace AudioShare
             {
                 using (TcpClient tcpClient = new TcpClient())
                 {
-                    tcpClient.ReceiveTimeout = timeout;
                     Task connectTask = tcpClient.ConnectAsync(host, port);
-                    if (await Task.WhenAny(connectTask, Task.Delay(TimeSpan.FromMilliseconds(timeout))) != connectTask)
+                    Task finished = await Task.WhenAny(connectTask, Task.Delay(TimeSpan.FromMilliseconds(timeout)));
+                    if (finished != connectTask)
                     {
                         return false;
                     }
-                    return true;
+                    // A faulted task (connection refused/unreachable) also "completes";
+                    // awaiting it distinguishes success from failure.
+                    try
+                    {
+                        await connectTask;
+                        return true;
+                    }
+                    catch (Exception)
+                    {
+                        return false;
+                    }
                 }
             }
             catch (Exception)
@@ -77,7 +87,7 @@ namespace AudioShare
             }
         }
 
-        public static async Task<int> RunCommandAsync(string fileName, string arguments)
+        public static async Task<int> RunCommandAsync(string fileName, string arguments, int timeoutMs = 60000)
         {
             var processInfo = new ProcessStartInfo
             {
@@ -85,24 +95,53 @@ namespace AudioShare
                 Arguments = arguments,
                 UseShellExecute = false,
                 RedirectStandardOutput = true,
+                RedirectStandardError = true,
                 CreateNoWindow = true
             };
-            Process process = new Process
+            using (Process process = new Process
             {
                 StartInfo = processInfo,
                 EnableRaisingEvents = true
-            };
-            var completionSource = new TaskCompletionSource<int>();
-            process.Exited += (sender, args) =>
+            })
             {
-                completionSource.SetResult(process.ExitCode);
-                process.Dispose();
-            };
-            if (process.Start())
-            {
+                var completionSource = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
+                process.Exited += (sender, args) =>
+                {
+                    try
+                    {
+                        completionSource.TrySetResult(process.ExitCode);
+                    }
+                    catch (Exception)
+                    {
+                        completionSource.TrySetResult(-1);
+                    }
+                };
+                try
+                {
+                    if (!process.Start())
+                    {
+                        Logger.Error("run command failed to start: " + fileName + " " + arguments);
+                        return -1;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Logger.Error("run command error: " + ex.Message);
+                    return -1;
+                }
+                // Drain both pipes concurrently, or the child blocks forever once
+                // its stdout pipe buffer fills up.
+                Task<string> outputTask = process.StandardOutput.ReadToEndAsync();
+                Task<string> errorTask = process.StandardError.ReadToEndAsync();
+                Task finished = await Task.WhenAny(completionSource.Task, Task.Delay(timeoutMs));
+                if (finished != completionSource.Task)
+                {
+                    Logger.Error("run command timeout: " + fileName + " " + arguments);
+                    try { process.Kill(); } catch (Exception) { }
+                }
+                try { await Task.WhenAll(outputTask, errorTask); } catch (Exception) { }
                 return await completionSource.Task;
             }
-            return 0;
         }
 
         public static async Task<string> RunAdbShellCommandAsync(AdbClient adbClient, string command, DeviceData device)
@@ -153,14 +192,20 @@ namespace AudioShare
 
         public static string FindAdbPath()
         {
-            List<string> pathDirectories = Environment.GetEnvironmentVariable("PATH").Split(';').ToList();
+            string pathVariable = Environment.GetEnvironmentVariable("PATH") ?? string.Empty;
+            List<string> pathDirectories = pathVariable.Split(';').ToList();
             var mainModule = Process.GetCurrentProcess()?.MainModule;
-            if (mainModule != null)
+            if (mainModule != null && !string.IsNullOrWhiteSpace(mainModule.FileName))
             {
-                pathDirectories.Add(Path.GetDirectoryName(mainModule.FileName));
+                string directory = Path.GetDirectoryName(mainModule.FileName);
+                if (!string.IsNullOrWhiteSpace(directory))
+                {
+                    pathDirectories.Add(directory);
+                }
             }
             foreach (string directory in pathDirectories)
             {
+                if (string.IsNullOrWhiteSpace(directory)) continue;
                 string adbPath = Path.Combine(directory, "adb.exe");
                 if (File.Exists(adbPath))
                 {

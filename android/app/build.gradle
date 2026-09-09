@@ -2,6 +2,20 @@ plugins {
     id 'com.android.application'
 }
 
+// Release signing material lives outside the repo: keystore.properties locally
+// (gitignored) or environment variables in CI. Without it, releases fall back
+// to the debug key so local builds still work.
+def keystoreProps = new Properties()
+def keystorePropsFile = rootProject.file("keystore.properties")
+if (keystorePropsFile.exists()) {
+    keystorePropsFile.withInputStream { keystoreProps.load(it) }
+}
+def releaseStoreFile = keystoreProps.getProperty("storeFile") ?: System.getenv("SIGNING_STORE_FILE")
+def releaseStorePassword = keystoreProps.getProperty("storePassword") ?: System.getenv("SIGNING_STORE_PASSWORD")
+def releaseKeyAlias = keystoreProps.getProperty("keyAlias") ?: System.getenv("SIGNING_KEY_ALIAS")
+def releaseKeyPassword = keystoreProps.getProperty("keyPassword") ?: System.getenv("SIGNING_KEY_PASSWORD")
+def hasReleaseSigning = releaseStoreFile != null && file(releaseStoreFile).exists()
+
 android {
     namespace 'com.picapico.audioshare'
     compileSdk 35
@@ -10,8 +24,8 @@ android {
         applicationId "com.picapico.audioshare"
         minSdk 21
         targetSdk 35
-        versionCode 203
-        versionName "2.0.3"
+        versionCode 204
+        versionName "2.0.4"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         multiDexEnabled true
@@ -37,16 +51,18 @@ android {
 
     signingConfigs {
         release {
-            storeFile file("../sign.jks")
-            storePassword "audioshare"
-            keyAlias "audioshare"
-            keyPassword "audioshare"
+            if (hasReleaseSigning) {
+                storeFile file(releaseStoreFile)
+                storePassword releaseStorePassword
+                keyAlias releaseKeyAlias
+                keyPassword releaseKeyPassword
+            }
         }
     }
 
     buildTypes {
         release {
-            signingConfig signingConfigs.release
+            signingConfig hasReleaseSigning ? signingConfigs.release : signingConfigs.debug
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }

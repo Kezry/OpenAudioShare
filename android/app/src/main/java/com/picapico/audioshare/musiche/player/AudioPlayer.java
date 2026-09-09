@@ -128,7 +128,10 @@ public class AudioPlayer implements OnActionReceiveListener, IMediaPlayer.Listen
     }
 
     public void getPosition(){
-        mediaPlayer.getRealtimePosition(position -> changedListener.onPositionChanged(position));
+        if(changedListener == null) return;
+        mediaPlayer.getRealtimePosition(position -> {
+            if(changedListener != null) changedListener.onPositionChanged(position);
+        });
     }
     public JSONObject getStatus() {
         Map<String, Object> result = new HashMap<>();

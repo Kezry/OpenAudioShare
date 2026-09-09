@@ -110,20 +110,28 @@ namespace AudioShare
 
         private async void InitNamedPipeServerStream()
         {
-            NamedPipeServerStream serverStream = new NamedPipeServerStream("_AUDIO_SHARE_PIPE", PipeDirection.InOut, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
-            try
+            // Single-instance activation loop; stop as soon as the app is shutting
+            // down, otherwise Dispatcher.Invoke throws forever and the process lingers.
+            while (Application.Current == null || !Application.Current.Dispatcher.HasShutdownStarted)
             {
-                await serverStream.WaitForConnectionAsync();
-                Dispatcher.Invoke(() =>
+                NamedPipeServerStream serverStream = new NamedPipeServerStream("_AUDIO_SHARE_PIPE", PipeDirection.InOut, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
+                try
                 {
-                    ShowWindow();
-                });
-                serverStream.Close();
+                    await serverStream.WaitForConnectionAsync();
+                    await Dispatcher.InvokeAsync(() =>
+                    {
+                        ShowWindow();
+                    });
+                }
+                catch (Exception)
+                {
+                }
+                finally
+                {
+                    try { serverStream.Dispose(); } catch (Exception) { }
+                }
+                if (Application.Current == null || Application.Current.Dispatcher.HasShutdownStarted) return;
             }
-            catch (Exception)
-            {
-            }
-            InitNamedPipeServerStream();
         }
 
         private void InitLanguage()
@@ -193,41 +201,49 @@ namespace AudioShare
 
         private async void MainWindow_Loaded(object sender, RoutedEventArgs e)
         {
+            try
+            {
 #if DEBUG
 #else
-            WindowState = WindowState.Minimized;
+                WindowState = WindowState.Minimized;
 #endif
-            _model.RefreshAudios();
-            await _model.RefreshSpeakers();
+                _model.RefreshAudios();
+                await _model.RefreshSpeakers();
 #if DEBUG
 #else
-            Logger.Info("AutoConnect=" + _model.AutoConnect);
-            if (_model.AutoConnect)
-            {
-                Logger.Info("Auto-connecting speakers...");
-                List<Task> tasks = new List<Task>();
-                foreach (var speaker in _model.Speakers)
+                Logger.Info("AutoConnect=" + _model.AutoConnect);
+                if (_model.AutoConnect)
                 {
-                    if (speaker.UnConnected && speaker.ChannelSelected.Key != AudioChannel.None)
+                    Logger.Info("Auto-connecting speakers...");
+                    List<Task> tasks = new List<Task>();
+                    foreach (var speaker in _model.Speakers)
                     {
-                        tasks.Add(speaker.Connect());
+                        if (speaker.UnConnected && speaker.ChannelSelected.Key != AudioChannel.None)
+                        {
+                            tasks.Add(speaker.Connect());
+                        }
                     }
+                    await Task.WhenAll(tasks);
                 }
-                await Task.WhenAll(tasks);
+                if (_model.Speakers.Any(m => m.Connected))
+                {
+                    Hide();
+                }
+                else
+                {
+                    ShowWindow();
+                }
+                if (_model.IsUSB && _model.Speakers.Count == 0)
+                {
+                    _model.IsUSB = false;
+                }
+#endif
             }
-            if (_model.Speakers.Any(m => m.Connected))
+            catch (Exception ex)
             {
-                Hide();
-            }
-            else
-            {
+                Logger.Error("startup init error: ", ex);
                 ShowWindow();
             }
-            if (_model.IsUSB && _model.Speakers.Count == 0)
-            {
-                _model.IsUSB = false;
-            }
-#endif
         }
 
         private void Exit(object sender, RoutedEventArgs e)

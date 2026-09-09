@@ -242,4 +242,3 @@ ModelManifest.xml
 # FAKE - F# Make
 .fake/
 
-FodyWeavers.*

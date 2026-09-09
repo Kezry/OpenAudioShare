@@ -68,7 +68,25 @@ namespace AudioShare
 
         public void Save()
         {
-            File.WriteAllText(_loadPath, ToString());
+            try
+            {
+                // Write-then-replace so a crash mid-save cannot corrupt the only config copy.
+                string content = JsonConvert.SerializeObject(this);
+                string tempPath = _loadPath + ".tmp";
+                File.WriteAllText(tempPath, content);
+                if (File.Exists(_loadPath))
+                {
+                    File.Replace(tempPath, _loadPath, null);
+                }
+                else
+                {
+                    File.Move(tempPath, _loadPath);
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Error("save settings error: " + ex.Message);
+            }
         }
     }
 }

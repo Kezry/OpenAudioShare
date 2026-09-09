@@ -165,6 +165,13 @@ public class ExoPlayer implements IMediaPlayer, Player.Listener {
     @Override
     public void onPlayerError(@NonNull PlaybackException error) {
         Log.e(TAG, "onPlayerError: ", error);
+        // Treat an unrecoverable source error as track-ended so the playlist
+        // advances and remote sync keeps working instead of stalling forever.
+        setPlaying(false);
+        handler.removeCallbacks(updateProgressAction);
+        if(mediaChangedListener != null){
+            mediaChangedListener.onPlaybackStateChanged(Listener.STATE_ENDED);
+        }
     }
     @Override
     @SuppressWarnings("ReferenceEquality")

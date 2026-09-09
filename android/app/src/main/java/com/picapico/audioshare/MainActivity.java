@@ -82,11 +82,9 @@ public class MainActivity extends AppCompatActivity {
         bindService(intent, connection, Context.BIND_AUTO_CREATE);
         managerText.setOnClickListener(this::onManagerClick);
         findViewById(R.id.imageView).setOnClickListener(this::onManagerClick);
-        ActivityCompat.requestPermissions(this, new String[]{
-                Manifest.permission.INTERNET,
-                Manifest.permission.ACCESS_NETWORK_STATE,
-                Manifest.permission.ACCESS_WIFI_STATE
-        }, 1);
+        if (Build.VERSION.SDK_INT >= 33) {
+            requestPermissions(new String[]{android.Manifest.permission.POST_NOTIFICATIONS}, 1);
+        }
         managerSwitch.setOnClickListener(this::onHttpServerRunningChanged);
     }
 
@@ -108,6 +106,11 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onDestroy() {
         super.onDestroy();
+        // The service outlives the activity; drop the listener so the
+        // activity is not leaked through it.
+        if (tcpService != null) {
+            tcpService.setMessageListener(null);
+        }
         if (isBound) {
             unbindService(connection);
             isBound = false;

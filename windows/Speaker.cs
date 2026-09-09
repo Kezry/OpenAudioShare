@@ -603,7 +603,16 @@ namespace AudioShare
         }
 
         private static readonly byte[] _latencyCmdBytes = new byte[] { (byte)Command.MeasureLatency };
-        private static readonly byte[] _responseBuffer = new byte[1];
+        private readonly byte[] _responseBuffer = new byte[1];
+
+        private static async Task<T> WithTimeout<T>(Task<T> task, int timeoutMs, string action)
+        {
+            // ReceiveTimeout/ConnectAsync timeouts do not apply to async APIs.
+            Task finished = await Task.WhenAny(task, Task.Delay(timeoutMs));
+            if (finished != task) throw new TimeoutException(action + " timeout");
+            return await task;
+        }
+
         private async Task RequestTcp(Command command, byte[] data = null, bool force=false)
         {
             if (command == Command.None ||
@@ -615,10 +624,9 @@ namespace AudioShare
             }
             TcpClient client = new TcpClient();
             client.NoDelay = true;
-            client.SendTimeout = 1000;
             try
             {
-                await client.ConnectAsync(_remoteIP, _remotePort);
+                await WithTimeout(client.ConnectAsync(_remoteIP, _remotePort), 3000, "connect");
                 var stream = client.GetStream();
                 await stream.WriteAsync(TCP_HEAD, 0, TCP_HEAD.Length);
                 await stream.WriteAsync(new byte[] { (byte)command }, 0, 1);
@@ -626,7 +634,7 @@ namespace AudioShare
                 {
                     await stream.WriteAsync(data, 0, data.Length);
                 }
-                await stream.ReadAsync(_responseBuffer, 0, 1);
+                await WithTimeout(stream.ReadAsync(_responseBuffer, 0, 1), 3000, "read");
             }
             catch (Exception)
             {
@@ -679,16 +687,14 @@ namespace AudioShare
 
             TcpClient client = new TcpClient();
             client.NoDelay = true;
-            client.SendTimeout = 2000;
-            client.ReceiveTimeout = 2000;
             try
             {
                 long start = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-                await client.ConnectAsync(_remoteIP, _remotePort);
+                await WithTimeout(client.ConnectAsync(_remoteIP, _remotePort), 3000, "connect");
                 var stream = client.GetStream();
                 await stream.WriteAsync(TCP_HEAD, 0, TCP_HEAD.Length);
                 await stream.WriteAsync(_latencyCmdBytes, 0, 1);
-                await stream.ReadAsync(_responseBuffer, 0, 1);
+                await WithTimeout(stream.ReadAsync(_responseBuffer, 0, 1), 3000, "read");
                 long rtt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() - start;
                 if (_smoothedRTT == 0)
                     _smoothedRTT = rtt;

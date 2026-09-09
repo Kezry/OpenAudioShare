@@ -17,3 +17,6 @@ local.properties
 app/release
 app/debug
 app/src/main/assets
+# Signing material (kept out of the repo)
+sign.jks
+keystore.properties

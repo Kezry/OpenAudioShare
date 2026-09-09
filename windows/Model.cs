@@ -124,7 +124,18 @@ namespace AudioShare
             SearchSpeakers(null);
             while (true)
             {
-                UdpReceiveResult result = await _udpListener.ReceiveAsync();
+                UdpReceiveResult result;
+                try
+                {
+                    result = await _udpListener.ReceiveAsync();
+                }
+                catch (Exception ex)
+                {
+                    // Network adapter changes reset the socket; keep listening.
+                    Logger.Error("udp receive error: " + ex.Message);
+                    if (_udpListener == null) return;
+                    continue;
+                }
                 string message = Encoding.UTF8.GetString(result.Buffer);
                 var messages = message.Split('@');
                 if (messages.Length < 2 || messages[0] != "picapico-audio-share") continue;
@@ -165,7 +176,12 @@ namespace AudioShare
 
         private void OnVolumeChanged(object sender, int volume)
         {
-            if (VolumeFollowSystem) Volume = volume;
+            // Volume notifications arrive on a threadpool thread; the Volume setter
+            // touches the Speakers collection and must run on the UI thread.
+            _dispatcher.InvokeAsync(() =>
+            {
+                if (VolumeFollowSystem) Volume = volume;
+            });
         }
 
         private readonly List<MMDevice> _audioDevices = new List<MMDevice>();

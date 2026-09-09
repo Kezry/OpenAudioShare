@@ -23,7 +23,6 @@ import androidx.core.app.NotificationCompat;
 import com.picapico.audioshare.MainActivity;
 import com.picapico.audioshare.R;
 
-import java.io.IOException;
 import java.io.InputStream;
 import java.net.URL;
 import java.util.concurrent.ExecutorService;
@@ -61,6 +60,10 @@ public class NotificationService extends Service {
     public void setMediaSessionCallback(NotificationCallback callback){
         mMediaSession.setCallback(callback, mHandler);
         NotificationReceiver.setOnActionReceiveListener(callback);
+    }
+
+    public void clearMediaSessionCallback(){
+        NotificationReceiver.setOnActionReceiveListener(null);
     }
 
     private void createNotificationChannel() {
@@ -106,7 +109,7 @@ public class NotificationService extends Service {
 //        mPendingLover = PendingIntent.getBroadcast(this, 4, loverIntent, PendingIntent.FLAG_IMMUTABLE);
         mNotificationBuilder  = new androidx.core.app.NotificationCompat.Builder(this, CHANNEL_ID)
                 .setStyle(new androidx.media.app.NotificationCompat.MediaStyle()
-                        .setShowActionsInCompactView(0, 1, 2, 3)
+                        .setShowActionsInCompactView(0, 1, 2)
                         .setShowCancelButton(false)
                         .setMediaSession(mMediaSession.getSessionToken()))
                 .setContentIntent(pendingInfo)
@@ -145,8 +148,8 @@ public class NotificationService extends Service {
                 .build();
         try {
             startForeground(NOTIFICATION_ID, mNotification);
-        }catch (Exception ignore){
-
+        }catch (Exception e){
+            android.util.Log.w("NotificationService", "startForeground failed: " + e);
         }
         if(!playing) {
             stopForeground(false);
@@ -184,16 +187,17 @@ public class NotificationService extends Service {
         if(title == null || title.isEmpty()){
             updateMediaPosition(playing, position);
         }else {
-            if (artwork.equals(mLastArtWork) && mLargeIcon != null) {
+            if (artwork == null || artwork.isEmpty() || (artwork.equals(mLastArtWork) && mLargeIcon != null)) {
                 updateNotification(title, artist, album, playing, lover, position, duration, mLargeIcon);
             }else {
                 mExecutorService.execute(() -> {
                     Bitmap largeIcon;
                     try {
                         URL url = new URL(artwork);
-                        InputStream inputStream = url.openStream();
-                        largeIcon = BitmapFactory.decodeStream(inputStream);
-                    } catch (IOException e) {
+                        try (InputStream inputStream = url.openStream()) {
+                            largeIcon = BitmapFactory.decodeStream(inputStream);
+                        }
+                    } catch (Exception e) {
                         if(mDefaultLargeIcon == null) {
                             mDefaultLargeIcon = BitmapFactory.decodeResource(getResources(), R.mipmap.ic_launcher);
                         }
@@ -202,9 +206,8 @@ public class NotificationService extends Service {
                     Bitmap finalLargeIcon = largeIcon;
                     mHandler.post(() -> {
                         mLastArtWork = artwork;
-                        if(mLargeIcon != null && !mLargeIcon.equals(mDefaultLargeIcon)) {
-                            mLargeIcon.recycle();
-                        }
+                        // Do not recycle the previous bitmap: the posted notification
+                        // may still be drawn by SystemUI.
                         mLargeIcon = finalLargeIcon;
                         updateNotification(title, artist, album, playing, lover, position, duration, mLargeIcon);
                     });
@@ -221,6 +224,14 @@ public class NotificationService extends Service {
     @Override
     public void onDestroy() {
         super.onDestroy();
+        clearMediaSessionCallback();
+        mHandler.removeCallbacksAndMessages(null);
+        mExecutorService.shutdownNow();
+        if (mMediaSession != null) {
+            mMediaSession.setActive(false);
+            mMediaSession.release();
+            mMediaSession = null;
+        }
     }
 
     @Nullable

@@ -16,6 +16,20 @@ jobs:
         uses: actions/checkout@v4
         with:
           submodules: recursive
+          fetch-depth: 0
+
+      - name: Verify Version Consistency
+        run: |
+          $tag = "${{ github.ref_name }}" -replace '^v', ''
+          $csprojVersion = (Select-String -Path windows/AudioShare.csproj -Pattern '<Version>(.*?)</Version>' | Select-Object -First 1).Matches.Groups[1].Value
+          $gradle = Get-Content android/app/build.gradle -Raw
+          $versionName = [regex]::Match($gradle, 'versionName "([^"]+)"').Groups[1].Value
+          $versionCode = [regex]::Match($gradle, 'versionCode (\d+)').Groups[1].Value
+          if ($csprojVersion -ne $tag) { throw "Tag v$tag does not match windows csproj version $csprojVersion" }
+          if ($versionName -ne $tag) { throw "Tag v$tag does not match android versionName $versionName" }
+          $expectedCode = [int]($tag -replace '\.', '')
+          if ([int]$versionCode -ne $expectedCode) { throw "versionCode $versionCode does not match expected $expectedCode for $tag" }
+          Write-Host "Version check OK: v$tag (versionCode $versionCode)"
 
       - name: Setup MSBuild
         uses: microsoft/setup-msbuild@v2
@@ -36,18 +50,25 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
+      # Gradle caching is handled by setup-gradle itself; a second actions/cache
+      # on the same paths caused save/restore conflicts.
       - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v3
+        uses: gradle/actions/setup-gradle@v4
 
-      - name: Cache Gradle packages
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
-          restore-keys: |
-            ${{ runner.os }}-gradle-
+      - name: Restore Android Signing Key
+        env:
+          SIGNING_KEYSTORE_B64: ${{ secrets.SIGNING_KEYSTORE_B64 }}
+          SIGNING_STORE_PASSWORD: ${{ secrets.SIGNING_STORE_PASSWORD }}
+          SIGNING_KEY_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS }}
+          SIGNING_KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
+        run: |
+          if (-not $env:SIGNING_KEYSTORE_B64) {
+            throw "Secret SIGNING_KEYSTORE_B64 is not configured; refusing to publish a debug-signed APK."
+          }
+          $dir = "$env:RUNNER_TEMP\signing"
+          New-Item -ItemType Directory -Force -Path $dir | Out-Null
+          [IO.File]::WriteAllBytes("$dir\sign.jks", [Convert]::FromBase64String($env:SIGNING_KEYSTORE_B64))
+          "SIGNING_STORE_FILE=$dir\sign.jks" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
       - name: Build Musiche Web
         run: |
@@ -58,11 +79,6 @@ jobs:
       - name: Copy Web Assets
         run: |
           copy musiche\web\dist android\app\src\main\assets -Recurse
-
-      - name: Create FodyWeavers.xml
-        run: |
-          cd windows
-          echo "<Weavers><Costura/></Weavers>" > FodyWeavers.xml
 
       - name: Build Windows (.NET Framework 4.6.2)
         run: |
@@ -95,38 +111,35 @@ jobs:
       - name: Generate Release Notes
         id: release_notes
         run: |
-          $version = "${{ github.ref_name }}" -replace 'v', ''
+          $tag = "${{ github.ref_name }}"
+          $tags = @(git tag --sort=-creatordate | Where-Object { $_ -ne $tag })
+          $prevTag = if ($tags.Count -gt 0) { $tags[0] } else { $null }
+          if ($prevTag) {
+            $commits = @(git log --pretty=format:"- %s" "$prevTag..$tag" | Where-Object { $_ -match '\S' })
+            $range = "$prevTag -> $tag"
+          } else {
+            $commits = @(git log --pretty=format:"- %s" -20 | Where-Object { $_ -match '\S' })
+            $range = $tag
+          }
+          $changelog = ($commits -join "`n")
           @"
-          ## AudioShare v$version
+          ## AudioShare $tag
 
-          ### 新增功能
-          - **一键连接/断开**: 同时连接或断开所有设备
-          - **自动连接**: 开启后启动软件自动连接已保存设备
-          - **延迟显示**: Windows 设备列表显示连接延迟和质量指示灯
-          - **同步延迟显示**: Android 端显示同步延迟信息
+          $range
 
-          ### 同步优化
-          - **实时延迟调整**: SetDelay 命令可在播放过程中动态生效，修复长时间播放后设备间音频漂移
-          - **RTT 平滑**: 使用指数移动平均滤波网络延迟测量，减少抖动
-          - **更快同步周期**: 同步检测间隔从 30 秒缩短至 15 秒
-          - **延迟变化滞后**: 仅当延迟差超过 5ms 时才发送调整命令，避免频繁抖动
-          - **缓冲区漂移监控**: 自动检测并修正长时间播放中的缓冲区积累
+          ### 本次更新
 
-          ### 性能优化
-          - **低延迟音频**: Android 使用 AAudio 快速音频路径 (API 24+)
-          - **直接音频写入**: 移除线程切换，降低音频延迟
-          - **连接稳定性**: 断开后保留地址可重连，改善断开检测
-          - **多设备同步**: 通过控制通道测量 RTT，自动补偿延迟
+          $changelog
 
           ### 下载说明
           - **AudioShare.exe**: Windows 版本（需要 .NET Framework 4.6.2+，Win10/11 自带）
           - **AudioShare.apk**: Android 32位安装包（需要 Android 5.0+）
-          - **AudioShare_arm64.apk**: Android 64位安装包（适配 Android 14+，推荐新设备使用）
+          - **AudioShare_arm64.apk**: Android 64位安装包（推荐新设备使用）
           - **adb.exe**: ADB 工具（USB 连接需要，可选）
 
           ### 系统要求
           - Windows 10/11
-          - Android 5.0+（32位）/ Android 14+（64位）
+          - Android 5.0+
           - 同一局域网（Wi-Fi）或 USB 数据线连接
 
           ---
@@ -144,7 +157,7 @@ jobs:
             release/adb.exe
             release/AdbWinApi.dll
             release/AdbWinUsbApi.dll
-          fail_on_unmatched_files: false
+          fail_on_unmatched_files: true
           draft: false
           prerelease: false
         env:

@@ -432,9 +432,15 @@ public class HttpServer implements AudioPlayer.OnChangedListener {
         }
         response.send(new JSONObject(newValues));
     };
+    // Only web-player keys may be touched over HTTP; the app's own
+    // preferences (service config, tokens) must stay unreachable.
+    private boolean isWebPlayerKey(String key){
+        return key != null && key.startsWith("musiche-");
+    }
+
     private final HttpServerRequestCallback deleteStorage = (request, response) -> {
         String key = request.getQuery().getString("key");
-        if(mPreferences != null && key != null && !key.isEmpty()){
+        if(mPreferences != null && isWebPlayerKey(key)){
             mPreferences.edit().remove(key).apply();
             response.send("application/json", "{\"data\":true}");
         }else {
@@ -443,7 +449,7 @@ public class HttpServer implements AudioPlayer.OnChangedListener {
     };
     private final HttpServerRequestCallback getStorage = (request, response) -> {
         String key = request.getQuery().getString("key");
-        if(mPreferences != null && key != null && !key.isEmpty()){
+        if(mPreferences != null && isWebPlayerKey(key)){
             String value = mPreferences.getString(key, "");
             response.send(value);
         }else {
@@ -453,7 +459,7 @@ public class HttpServer implements AudioPlayer.OnChangedListener {
     private final HttpServerRequestCallback setStorage = (request, response) -> {
         String key = request.getQuery().getString("key");
         String value = request.getBody().get().toString();
-        if(mPreferences != null && key != null && !key.isEmpty()){
+        if(mPreferences != null && isWebPlayerKey(key)){
             mPreferences.edit().putString(key, value).apply();
         }
         response.end();
@@ -706,12 +712,9 @@ public class HttpServer implements AudioPlayer.OnChangedListener {
     }
 
     private void setCores(AsyncHttpServerResponse response){
-        Headers headers = response.getHeaders();
-        headers.set("Access-Control-Allow-Origin", "*");
-        headers.set("Access-Control-Allow-Methods", "*");
-        headers.set("Access-Control-Allow-Headers", "*");
-        headers.set("Access-Control-Expose-Headers", "*");
-        headers.set("Access-Control-Allow-Credentials", "true");
+        // The web player is always served by this same server (same origin), so
+        // cross-origin access is never needed; wildcard CORS + credentials would
+        // let any web page ride the user's session against this API.
     }
 
     private void setHeader(AsyncHttpServerResponse response, Map<String, String> headers){

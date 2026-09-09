@@ -9,7 +9,7 @@ import android.util.Log;
 import androidx.core.content.ContextCompat;
 
 public class WakeLockManager {
-    private static final String TAG = "AudioShareBootReceiver";
+    private static final String TAG = "AudioShareWakeLock";
     private PowerManager.WakeLock wakeLock = null;
     private final Context context;
     public WakeLockManager(Context context) {
@@ -25,6 +25,8 @@ public class WakeLockManager {
     @SuppressLint("WakelockTimeout")
     public void acquireWakeLock() {
         if(!hasWakeLockPermission()) return;
+        if (wakeLock != null && wakeLock.isHeld()) return;
+        releaseWakeLock();
         PowerManager powerManager = (PowerManager) context.getSystemService(Context.POWER_SERVICE);
         wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, TcpService.class.getName());
         if (null != wakeLock)  {
