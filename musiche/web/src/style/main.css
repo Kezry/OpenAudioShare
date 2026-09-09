@@ -1,0 +1,29 @@
+@import './base.less';
+@import './element.less';
+
+@font-face {
+  /*自定义字体名*/
+  font-family: 'icon-font';
+  /*路径*/
+  src: url('../assets/icon-font.woff2') format('woff2');
+  font-weight: normal;
+  font-style: normal;
+}
+
+.music-icon {
+  font-family: 'icon-font';
+  font-size: 20px;
+  font-weight: normal;
+  cursor: pointer;
+}
+button {
+  font-family: unset;
+}
+.is-disabled .music-icon {
+  cursor: not-allowed;
+}
+
+button .music-icon {
+  font-size: 18px;
+  margin-right: 5px;
+}

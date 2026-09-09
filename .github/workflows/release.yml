@@ -76,7 +76,7 @@ jobs:
       - name: Build Musiche Web
         run: |
           cd musiche/web
-          yarn install
+          yarn install --frozen-lockfile
           yarn build-only
 
       - name: Copy Web Assets

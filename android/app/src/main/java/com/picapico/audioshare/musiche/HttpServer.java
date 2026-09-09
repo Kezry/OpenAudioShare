@@ -26,6 +26,7 @@ import com.picapico.audioshare.musiche.player.AudioPlayer;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.InputStream;
 import java.lang.reflect.Method;
@@ -36,6 +37,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Timer;
 import java.util.TimerTask;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class HttpServer implements AudioPlayer.OnChangedListener {
     private static final String TAG = "AudioShareHttpServer";
@@ -46,7 +48,7 @@ public class HttpServer implements AudioPlayer.OnChangedListener {
     AudioPlayer mAudioPlayer;
     List<WebSocket> mWebClients = new ArrayList<>();
     final Object mWebClientsLock = new Object();
-    Map<String, RemoteClient> mRemoteClients = new HashMap<>();
+    Map<String, RemoteClient> mRemoteClients = new ConcurrentHashMap<>();
     BroadcastReceiver mBroadcastReceiver;
     SharedPreferences mPreferences;
     AssetManager mAssetManager;
@@ -342,7 +344,6 @@ public class HttpServer implements AudioPlayer.OnChangedListener {
         }
         InputStream inputStream = null;
         try {
-            mAssetManager.list("index.html");
             String urlPath = request.getPath().substring(1);
             inputStream = mAssetManager.open(urlPath);
         } catch (Exception ignore) {
@@ -355,11 +356,22 @@ public class HttpServer implements AudioPlayer.OnChangedListener {
         }
         if(inputStream != null){
             try {
-                byte[] buffer = new byte[inputStream.available()];
-                int ignore = inputStream.read(buffer);
-                response.send(getMimeType(request.getPath()), buffer);
+                // available() is a hint, and a single read() may return short;
+                // drain the stream fully or served files get truncated.
+                ByteArrayOutputStream output = new ByteArrayOutputStream();
+                byte[] chunk = new byte[8192];
+                int read;
+                while ((read = inputStream.read(chunk)) != -1) {
+                    output.write(chunk, 0, read);
+                }
+                response.send(getMimeType(request.getPath()), output.toByteArray());
                 return;
             } catch (Exception ignore) {
+            } finally {
+                try {
+                    inputStream.close();
+                } catch (Exception ignore) {
+                }
             }
         }
         response.code(404);

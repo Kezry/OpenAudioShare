@@ -1,0 +1,12 @@
+node_modules
+dist
+yarn.lock
+/*.d.ts
+env.d.ts
+*.log
+.vscode
+PingFang-SC-Regular.otf
+tsconfig.tsbuildinfo
+web.zip
+/public/version
+stats.html

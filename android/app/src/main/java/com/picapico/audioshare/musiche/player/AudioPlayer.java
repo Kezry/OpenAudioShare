@@ -355,8 +355,21 @@ public class AudioPlayer implements OnActionReceiveListener, IMediaPlayer.Listen
         }
         musicItem.getMusicUrl(quality, musicUrl -> {
             if(musicUrl == null){
-                this.mMusicPlayRequest.getPlaylist().remove(this.mMusicPlayRequest.getIndex());
-                next();
+                List<MusicItem> playlist = this.mMusicPlayRequest.getPlaylist();
+                int index = this.mMusicPlayRequest.getIndex();
+                if(index >= 0 && index < playlist.size()){
+                    playlist.remove(index);
+                }
+                // The following track shifts into the removed index; replaying
+                // the same index continues the playlist instead of skipping it.
+                // At the end of the list next() applies the loop rules.
+                if(playlist.isEmpty()){
+                    pause();
+                }else if(index < playlist.size()){
+                    play(index);
+                }else {
+                    next();
+                }
             }else {
                 play(musicUrl);
             }
