@@ -34,7 +34,6 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Timer;
 import java.util.TimerTask;
 import java.util.concurrent.ConcurrentHashMap;
@@ -806,9 +805,9 @@ public class HttpServer implements AudioPlayer.OnChangedListener {
     public void sendServerWSMessage(RemoteMessage message){
         String msg = message.toJson();
         if (BuildConfig.DEBUG) Log.d(TAG, "send remote server message: " + msg);
-        for (String key: mRemoteClients.keySet()) {
+        for (RemoteClient client : mRemoteClients.values()) {
             try {
-                Objects.requireNonNull(mRemoteClients.get(key)).send(msg);
+                client.send(msg);
             }catch (Exception e){
                 Log.e(TAG, "send websocket msg error", e);
             }
