@@ -33,6 +33,7 @@ namespace AudioShare
         public Model()
         {
             _dispatcher = Dispatcher.CurrentDispatcher;
+            AudioManager.Gain = _settings.Gain / 100f;
             AudioManager.OnVolumeNotification += OnVolumeChanged;
             AudioManager.OnAudioResumed += OnAudioResumed;
             ToastNotificationManagerCompat.OnActivated += OnToastActivated;
@@ -121,7 +122,7 @@ namespace AudioShare
                 }
             }
             if (_udpListener == null) return;
-            SearchSpeakers(null);
+            _ = SearchSpeakers(false);
             while (true)
             {
                 UdpReceiveResult result;
@@ -152,10 +153,26 @@ namespace AudioShare
 
         private static readonly byte[] _discoverProbe = Encoding.UTF8.GetBytes("picapico-audio-share-find");
 
-        private async void SearchSpeakers(object sender)
+        // Manual "search speakers" reconnects discovered-but-idle speakers
+        // (e.g. after a speaker reboot); startup discovery must keep
+        // respecting the AutoConnect setting, so only button-triggered
+        // searches open this window.
+        private int _connectDiscoveredUntil = 0;
+
+        private bool InDiscoveryConnectWindow()
+        {
+            return _connectDiscoveredUntil != 0 &&
+                unchecked(Environment.TickCount - _connectDiscoveredUntil) < 0;
+        }
+
+        private async Task SearchSpeakers(bool connectDiscovered)
         {
             if (_udpListener == null) return;
             Logger.Info("search speakers start");
+            if (connectDiscovered)
+            {
+                _connectDiscoveredUntil = Environment.TickCount + 15000;
+            }
             try
             {
                 for (int repeat = 0; repeat < 3; repeat++)
@@ -287,6 +304,19 @@ namespace AudioShare
                 }
             }
         }
+        public int Gain
+        {
+            get => _settings.Gain;
+            set
+            {
+                int gain = Math.Max(25, Math.Min(400, value));
+                if (_settings.Gain == gain) return;
+                _settings.Gain = gain;
+                _settings.Save();
+                AudioManager.Gain = gain / 100f;
+                OnPropertyChanged(nameof(Gain));
+            }
+        }
         private bool _adbLoading = false;
         public bool AdbLoading
         {
@@ -379,7 +409,7 @@ namespace AudioShare
         public RelayCommand AddIPSpeakerCommand => _addIPSpeakerCommand ?? (_addIPSpeakerCommand = new RelayCommand(AddIPSpeaker, CanAddIPSpeaker));
 
         private RelayCommand _searchSpeakersCommand;
-        public RelayCommand SearchSpeakersCommand => _searchSpeakersCommand ?? (_searchSpeakersCommand = new RelayCommand(SearchSpeakers, CanSearchSpeakers));
+        public RelayCommand SearchSpeakersCommand => _searchSpeakersCommand ?? (_searchSpeakersCommand = new RelayCommand(s => _ = SearchSpeakers(true), CanSearchSpeakers));
 
         private RelayCommand _connectAllCommand;
         public RelayCommand ConnectAllCommand => _connectAllCommand ?? (_connectAllCommand = new RelayCommand(ConnectAll, CanConnectAll));
@@ -565,6 +595,16 @@ namespace AudioShare
                 }
                 _settings.Save();
                 return;
+            }
+            // Known device answered a manual search: reconnect it if idle
+            // (e.g. after the speaker rebooted and dropped the session).
+            if (!InDiscoveryConnectWindow() || IsUSB) return;
+            var known = Speakers.FirstOrDefault(m => m.Id == id);
+            if (known != null && known.UnConnected && !known.Connecting &&
+                known.ChannelSelected.Key != AudioChannel.None)
+            {
+                Logger.Info("discovered " + id + ", reconnecting");
+                _ = known.Connect();
             }
         }
 

@@ -7,7 +7,7 @@
         xmlns:local="clr-namespace:AudioShare"
         mc:Ignorable="d" WindowStartupLocation="CenterScreen"
         d:DataContext="{d:DesignInstance Type=local:Model}"
-        Title="{DynamicResource title}" Height="360" Width="500" ResizeMode="NoResize"
+        Title="{DynamicResource title}" Height="392" Width="500" ResizeMode="NoResize"
              ExtendsContentIntoTitleBar="True"
              WindowCornerPreference="Round">
     <ui:UiWindow.Resources>
@@ -200,6 +200,11 @@
                 <Slider Width="219" Height="16" MinHeight="16" Maximum="100" Margin="0" IsEnabled="{Binding VolumeCustom}" Value="{Binding Volume}" VerticalAlignment="Bottom"/>
                 <Label Content="{DynamicResource followSystem}" Margin="5 0 5 0" VerticalAlignment="Bottom" Padding="0"/>
                 <ui:ToggleSwitch IsChecked="{Binding VolumeFollowSystem}" Width="40" Height="20" VerticalAlignment="Bottom"/>
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" Margin="0 5 0 0">
+                <Label Margin="0" Content="{DynamicResource gain}" VerticalAlignment="Bottom" Padding="0"/>
+                <Label Content="{Binding Gain}" HorizontalContentAlignment="Center" Width="38" Margin="5 0" VerticalAlignment="Bottom" Padding="0"/>
+                <Slider Width="319" Height="16" MinHeight="16" Minimum="25" Maximum="400" Margin="0" Value="{Binding Gain}" VerticalAlignment="Bottom" ToolTip="25% - 400%"/>
             </StackPanel>
             <StackPanel Orientation="Horizontal" Margin="0 5 0 0" HorizontalAlignment="Center" Width="400">
                 <ui:Button Appearance="Success" Height="30" Width="125"

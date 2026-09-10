@@ -36,10 +36,21 @@ namespace AudioShare
         private static int _channelCount = 2;
         private static int _channelMask = 0x3;
         private static bool _wasSilent = true;
+        private static float _gain = 1f;
 
         public static int SampleRate => _sampleRate;
         public static int Channels => _channelCount;
         public static int ChannelMask => _channelMask;
+
+        // Software boost applied to captured samples before they are handed to
+        // speakers. Loopback taps the mix after endpoint volume, so machines
+        // that keep Windows volume low (with loud amplified speakers) stream a
+        // quiet signal; the receiver-side volume control cannot fix that.
+        public static float Gain
+        {
+            get => _gain;
+            set => _gain = Math.Max(0.25f, Math.Min(4f, value));
+        }
 
         public static int DefaultMask(int channels)
         {
@@ -226,7 +237,29 @@ namespace AudioShare
                 _wasSilent = false;
                 OnAudioResumed?.Invoke(null, EventArgs.Empty);
             }
+            ApplyGain(e.Buffer, e.BytesRecorded);
             AudioFrameAvailable?.Invoke(null, new AudioFrameEventArgs(e.Buffer, e.BytesRecorded, _channelCount, _channelMask));
+        }
+
+        private static void ApplyGain(byte[] buffer, int length)
+        {
+            if (_gain == 1f || length < 2) return;
+            float gain = _gain;
+            for (int i = 0; i + 1 < length; i += 2)
+            {
+                short sample = (short)(buffer[i] | (buffer[i + 1] << 8));
+                int scaled = (int)(sample * gain);
+                if (scaled > short.MaxValue)
+                {
+                    scaled = short.MaxValue;
+                }
+                else if (scaled < short.MinValue)
+                {
+                    scaled = short.MinValue;
+                }
+                buffer[i] = (byte)scaled;
+                buffer[i + 1] = (byte)(scaled >> 8);
+            }
         }
     }
 }

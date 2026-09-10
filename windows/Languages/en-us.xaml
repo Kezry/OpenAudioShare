@@ -15,6 +15,7 @@
     <s:String x:Key="audioPlaybackDevice">Audio playback device: </s:String>
     <s:String x:Key="volume">Volume: </s:String>
     <s:String x:Key="followSystem">Follow system</s:String>
+    <s:String x:Key="gain">Gain: </s:String>
     <s:String x:Key="apkExistsTips">download apk to the current directory</s:String>
     <s:String x:Key="apkMisMatch">App not installed or version mismatch, please manually install</s:String>
     <s:String x:Key="adbMisMatch">ADB does not exist, please download to the current directory</s:String>

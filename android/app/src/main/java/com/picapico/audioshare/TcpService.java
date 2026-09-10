@@ -177,6 +177,10 @@ public class TcpService extends NotificationService {
     }
 
     private int lastPCVolume = 1;
+    // PC heartbeats every 5s even in silence, so a 10s read timeout only
+    // fires on dead connections; without it a stalled reader wedges forever.
+    private static final int SOCKET_READ_TIMEOUT_MS = 10000;
+
     private void processControlStream(byte command, InputStream stream) {
         if(command == 2){
             try {
@@ -237,9 +241,11 @@ public class TcpService extends NotificationService {
             stream = ((LocalSocket)socket).getInputStream();
             outputStream = ((LocalSocket)socket).getOutputStream();
             isLocal = true;
+            ((LocalSocket)socket).setSoTimeout(SOCKET_READ_TIMEOUT_MS);
         }else if (socket instanceof Socket){
             stream = ((Socket)socket).getInputStream();
             outputStream = ((Socket)socket).getOutputStream();
+            ((Socket)socket).setSoTimeout(SOCKET_READ_TIMEOUT_MS);
         }else {
             return;
         }
@@ -269,8 +275,25 @@ public class TcpService extends NotificationService {
                     outputStream
             )).start();
         }else {
-            processControlStream(command, stream);
-            socket.close();
+            // Control commands are short-lived; run them off the accept
+            // thread so a client dying mid-command cannot block every future
+            // connection (the reason speakers needed a reboot after a few
+            // connect/disconnect cycles).
+            final byte controlCommand = command;
+            final InputStream controlStream = stream;
+            final Closeable controlSocket = socket;
+            new Thread(() -> {
+                try {
+                    processControlStream(controlCommand, controlStream);
+                } catch (Exception e) {
+                    Log.w(TAG, "control stream error: " + e);
+                } finally {
+                    try {
+                        controlSocket.close();
+                    } catch (IOException ignored) {
+                    }
+                }
+            }).start();
         }
     }
 

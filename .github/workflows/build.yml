@@ -57,16 +57,36 @@ jobs:
           cd windows
           msbuild AudioShare.sln -t:"Restore;Build" /p:Configuration=Release /p:Platform="Any CPU" /p:TargetFramework=net462
 
+      - name: Restore Android Signing Key
+        env:
+          SIGNING_KEYSTORE_B64: ${{ secrets.SIGNING_KEYSTORE_B64 }}
+          SIGNING_STORE_PASSWORD: ${{ secrets.SIGNING_STORE_PASSWORD }}
+          SIGNING_KEY_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS }}
+          SIGNING_KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
+        run: |
+          if (-not $env:SIGNING_KEYSTORE_B64) {
+            Write-Warning "Secret SIGNING_KEYSTORE_B64 not configured; APKs will be debug-signed."
+          } else {
+            $dir = "$env:RUNNER_TEMP\signing"
+            New-Item -ItemType Directory -Force -Path $dir | Out-Null
+            [IO.File]::WriteAllBytes("$dir\sign.jks", [Convert]::FromBase64String($env:SIGNING_KEYSTORE_B64))
+            "SIGNING_STORE_FILE=$dir\sign.jks" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+            "SIGNING_STORE_PASSWORD=$env:SIGNING_STORE_PASSWORD" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+            "SIGNING_KEY_ALIAS=$env:SIGNING_KEY_ALIAS" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+            "SIGNING_KEY_PASSWORD=$env:SIGNING_KEY_PASSWORD" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          }
+
       - name: Build Android APK
         run: |
           cd android
           .\gradlew.bat assembleRelease
 
-      # The APKs stay unuploaded: this workflow has no signing key, so its
-      # release builds are debug-signed and cannot upgrade a released install.
-      - name: Upload Windows Executable
+      - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: AudioShare-windows
-          path: windows/bin/Release/net462/AudioShare.exe
+          name: AudioShare-build
+          path: |
+            windows/bin/Release/net462/AudioShare.exe
+            android/app/build/outputs/apk/arm32/release/app-arm32-release.apk
+            android/app/build/outputs/apk/arm64/release/app-arm64-release.apk
           if-no-files-found: error

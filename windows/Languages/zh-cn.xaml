@@ -15,6 +15,7 @@
     <s:String x:Key="audioPlaybackDevice">音频播放设备：</s:String>
     <s:String x:Key="volume">音量：</s:String>
     <s:String x:Key="followSystem">跟随系统</s:String>
+    <s:String x:Key="gain">增益：</s:String>
     <s:String x:Key="apkExistsTips">下载apk至当前目录</s:String>
     <s:String x:Key="apkMisMatch">app未安装或版本不匹配，请手动安装</s:String>
     <s:String x:Key="adbMisMatch">ADB不存在，请下载至当前目录</s:String>

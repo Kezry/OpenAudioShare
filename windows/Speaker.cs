@@ -243,7 +243,14 @@ namespace AudioShare
                     await WriteTcp(sampleRateBytes);
                     var channelBytes = BitConverter.GetBytes(_channel == AudioChannel.Stereo ? 12 : 4);
                     await WriteTcp(channelBytes);
-                    await tcpClient.GetStream().ReadAsync(new byte[1], 0, 1);
+                    // A 0-byte read means the player rejected the connection
+                    // (e.g. another session was still shutting down); failing
+                    // here lets the retry logic run instead of faking Connected.
+                    int ack = await tcpClient.GetStream().ReadAsync(new byte[1], 0, 1);
+                    if (ack <= 0)
+                    {
+                        throw new Exception("player did not acknowledge stream");
+                    }
                     _ = _dispatcher.InvokeAsync(() =>
                     {
                         AudioManager.StartCapture();
