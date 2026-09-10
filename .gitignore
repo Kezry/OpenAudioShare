@@ -36,3 +36,5 @@ Desktop.ini
 
 # 本地文档（在 local-info 分支管理）
 local-info/
+# local build deliverables
+artifacts/
