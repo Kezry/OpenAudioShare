@@ -61,3 +61,12 @@ jobs:
         run: |
           cd android
           .\gradlew.bat assembleRelease
+
+      # The APKs stay unuploaded: this workflow has no signing key, so its
+      # release builds are debug-signed and cannot upgrade a released install.
+      - name: Upload Windows Executable
+        uses: actions/upload-artifact@v4
+        with:
+          name: AudioShare-windows
+          path: windows/bin/Release/net462/AudioShare.exe
+          if-no-files-found: error
