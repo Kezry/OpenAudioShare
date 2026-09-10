@@ -328,9 +328,11 @@ namespace AudioShare
             {
                 int frontLeft = IndexOfBit(mask, 0x1, channels);
                 int frontRight = IndexOfBit(mask, 0x2, channels);
-                if (frontLeft < 0 && frontRight < 0 && channels > 0)
+                if (channels > 0 && (frontLeft < 0 || frontRight < 0))
                 {
-                    // Layout without front pair (e.g. mono mix): fold it to both.
+                    // Incomplete front pair (e.g. mono mix or a partial driver
+                    // mask): fall back to the first channels positionally
+                    // instead of muting the stream.
                     frontLeft = 0;
                     frontRight = Math.Min(1, channels - 1);
                 }

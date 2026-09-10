@@ -76,7 +76,14 @@ namespace AudioShare
                         _channelCount = mix.Channels;
                     }
                     int mask = ReadChannelMask(mix);
-                    if (mask != 0) _channelMask = mask;
+                    if (IsValidChannelMask(mask, _channelCount))
+                    {
+                        _channelMask = mask;
+                    }
+                    else if (mask != 0)
+                    {
+                        Logger.Error($"driver reported malformed channel mask 0x{mask:X} for {_channelCount}ch, falling back to 0x{DefaultMask(_channelCount):X}");
+                    }
                 }
             }
             catch (Exception ex)
@@ -109,6 +116,23 @@ namespace AudioShare
             {
             }
             return 0;
+        }
+
+        private static bool IsValidChannelMask(int mask, int channels)
+        {
+            if (mask <= 0 || channels <= 0) return false;
+            // Bits above SPEAKER_TOP_BACK_RIGHT (0x20000) are reserved, and
+            // WAVEFORMATEXTENSIBLE requires exactly one set bit per channel.
+            // Some drivers violate both (e.g. a Realtek reporting 2ch with
+            // mask 0x200016); routing by such a mask mutes real channels.
+            if ((mask & ~0x3FFFF) != 0) return false;
+            int bits = 0;
+            while (mask != 0)
+            {
+                bits += mask & 1;
+                mask >>= 1;
+            }
+            return bits == channels;
         }
 
         public static void SetDevice(MMDevice device, int sampleRate)
