@@ -34,8 +34,10 @@ namespace AudioShare
         {
             _dispatcher = Dispatcher.CurrentDispatcher;
             AudioManager.Gain = _settings.Gain / 100f;
+            AudioManager.CaptureMode = (CaptureMode)_settings.CaptureMode;
             AudioManager.OnVolumeNotification += OnVolumeChanged;
             AudioManager.OnAudioResumed += OnAudioResumed;
+            AudioManager.CaptureError += OnCaptureError;
             ToastNotificationManagerCompat.OnActivated += OnToastActivated;
             ConnectUdp();
             _heartBeatTimer = new DispatcherTimer();
@@ -201,6 +203,25 @@ namespace AudioShare
             });
         }
 
+        private void OnCaptureError(object sender, string messageKey)
+        {
+            // Capture/device notifications arrive on worker threads; toasts
+            // must be shown from the UI thread.
+            _dispatcher.InvokeAsync(() =>
+            {
+                try
+                {
+                    string text = Languages.Language.GetLanguageText(messageKey);
+                    if (string.IsNullOrEmpty(text)) return;
+                    new ToastContentBuilder().AddText(text).Show();
+                }
+                catch (Exception ex)
+                {
+                    Logger.Error("capture error toast failed: " + ex.Message);
+                }
+            });
+        }
+
         private readonly List<MMDevice> _audioDevices = new List<MMDevice>();
         public ObservableCollection<NamePair> AudioDevices { get; private set; } = new ObservableCollection<NamePair>();
         public ObservableCollection<Speaker> Speakers { get; private set; } = new ObservableCollection<Speaker>();
@@ -213,6 +234,13 @@ namespace AudioShare
             new SampleRatePair(44100, "44.1kHz"),
             new SampleRatePair(16000, "16kHz"),
             new SampleRatePair(8000, "8kHz"),
+        };
+        public ObservableCollection<KeyValuePair<CaptureMode, string>> CaptureModes => new ObservableCollection<KeyValuePair<CaptureMode, string>>()
+        {
+            new KeyValuePair<CaptureMode, string>(CaptureMode.Default, Languages.Language.GetLanguageText("captureModeDefault")),
+            new KeyValuePair<CaptureMode, string>(CaptureMode.EventSync, Languages.Language.GetLanguageText("captureModeEvent")),
+            new KeyValuePair<CaptureMode, string>(CaptureMode.LowLatency, Languages.Language.GetLanguageText("captureModeLowLatency")),
+            new KeyValuePair<CaptureMode, string>(CaptureMode.Compatible, Languages.Language.GetLanguageText("captureModeCompatible")),
         };
         public ImageSource Icon => Utils.AppIcon;
         public string Title => Languages.Language.GetLanguageText("title") + " " + Utils.VersionName;
@@ -315,6 +343,28 @@ namespace AudioShare
                 _settings.Save();
                 AudioManager.Gain = gain / 100f;
                 OnPropertyChanged(nameof(Gain));
+            }
+        }
+        public CaptureMode CaptureMode
+        {
+            get => (CaptureMode)Math.Max(0, Math.Min((int)CaptureMode.Compatible, _settings.CaptureMode));
+            set
+            {
+                if (CaptureMode == value) return;
+                _settings.CaptureMode = (int)value;
+                _settings.Save();
+                // Sync the static first so the mode also sticks when no device
+                // is selected yet (SetDevice would otherwise keep the old one).
+                AudioManager.CaptureMode = value;
+                var mDevice = _audioDevices.FirstOrDefault(m => m.ID == _settings.AudioId);
+                if (mDevice != null)
+                {
+                    // Rebuilds only the capture: speakers stay connected and
+                    // resume on the next frame, well under the receiver's 1.5s
+                    // reseed gap, so switching modes never drops playback.
+                    AudioManager.SetDevice(mDevice, _settings.SampleRate, notifyStop: false);
+                }
+                OnPropertyChanged(nameof(CaptureMode));
             }
         }
         private bool _adbLoading = false;

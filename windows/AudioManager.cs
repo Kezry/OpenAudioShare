@@ -1,4 +1,5 @@
 ﻿using NAudio.CoreAudioApi;
+using NAudio.CoreAudioApi.Interfaces;
 using NAudio.Wave;
 using System;
 using System.IO;
@@ -7,6 +8,14 @@ using System.Threading.Tasks;
 
 namespace AudioShare
 {
+    public enum CaptureMode
+    {
+        Default = 0,
+        EventSync = 1,
+        LowLatency = 2,
+        Compatible = 3,
+    }
+
     public class AudioFrameEventArgs : EventArgs
     {
         public byte[] Buffer { get; }
@@ -29,27 +38,88 @@ namespace AudioShare
         public static event EventHandler Stoped;
         public static event EventHandler<int> OnVolumeNotification;
         public static event EventHandler OnAudioResumed;
+        // Language resource key describing a capture problem; Model shows the toast.
+        public static event EventHandler<string> CaptureError;
 
-        private static WasapiLoopbackCapture _capture;
+        private const int MaxCaptureRestarts = 2;
+        private const int MaxDeviceRecoveries = 3;
+        private const int RestartDelayMs = 2000;
+
+        private static readonly object _syncLock = new object();
+        private static readonly MMDeviceEnumerator _deviceEnumerator = new MMDeviceEnumerator();
+        private static readonly DeviceNotifications _deviceNotifications = new DeviceNotifications();
+        private static bool _deviceNotificationsRegistered;
+
+        private static WasapiCapture _capture;
         private static MMDevice _device;
         private static int _sampleRate;
+        private static CaptureMode _mode = CaptureMode.Default;
         private static int _channelCount = 2;
         private static int _channelMask = 0x3;
         private static bool _wasSilent = true;
         private static float _gain = 1f;
+        private static int _captureRestarts;
+        private static int _deviceRecoveries;
+        private static string _awaitedDeviceId;
+        private static Timer _restartTimer;
 
         public static int SampleRate => _sampleRate;
         public static int Channels => _channelCount;
         public static int ChannelMask => _channelMask;
 
+        public static CaptureMode CaptureMode
+        {
+            get => _mode;
+            set
+            {
+                if ((int)value < 0 || (int)value > (int)CaptureMode.Compatible)
+                {
+                    value = CaptureMode.Default;
+                }
+                _mode = value;
+            }
+        }
+
         // Software boost applied to captured samples before they are handed to
-        // speakers. Loopback taps the mix after endpoint volume, so machines
+        // speakers. Loopback taps the mix *after* endpoint volume, so machines
         // that keep Windows volume low (with loud amplified speakers) stream a
         // quiet signal; the receiver-side volume control cannot fix that.
         public static float Gain
         {
             get => _gain;
             set => _gain = Math.Max(0.25f, Math.Min(4f, value));
+        }
+
+        // Loopback only differs from a normal capture by the Loopback stream
+        // flag; NAudio's WasapiLoopbackCapture hardcodes poll sync and a 100 ms
+        // buffer, so the other modes come from this subclass instead.
+        private class LoopbackCapture : WasapiCapture
+        {
+            public LoopbackCapture(MMDevice device, bool useEventSync, int bufferMs)
+                : base(device, useEventSync, bufferMs)
+            {
+            }
+
+            protected override AudioClientStreamFlags GetAudioClientStreamFlags()
+            {
+                return AudioClientStreamFlags.Loopback | base.GetAudioClientStreamFlags();
+            }
+        }
+
+        private static WasapiCapture CreateCapture(MMDevice device)
+        {
+            switch (_mode)
+            {
+                case CaptureMode.EventSync:
+                    return new LoopbackCapture(device, true, 100);
+                case CaptureMode.LowLatency:
+                    return new LoopbackCapture(device, true, 20);
+                case CaptureMode.Compatible:
+                    return new LoopbackCapture(device, false, 200);
+                default:
+                    // Historical path: poll sync, 100 ms buffer.
+                    return new WasapiLoopbackCapture(device);
+            }
         }
 
         public static int DefaultMask(int channels)
@@ -102,7 +172,7 @@ namespace AudioShare
                 Logger.Error("read mix format error: " + ex.Message);
             }
             if (_channelMask == 0) _channelMask = DefaultMask(_channelCount);
-            Logger.Info($"capture format: {_sampleRate}Hz {_channelCount}ch mask=0x{_channelMask:X}");
+            Logger.Info($"capture format: {_sampleRate}Hz {_channelCount}ch mask=0x{_channelMask:X} mode={_mode}");
         }
 
         private static int ReadChannelMask(WaveFormat format)
@@ -146,44 +216,75 @@ namespace AudioShare
             return bits == channels;
         }
 
-        public static void SetDevice(MMDevice device, int sampleRate)
+        public static void SetDevice(MMDevice device, int sampleRate, CaptureMode? mode = null, bool notifyStop = true)
         {
-            Logger.Info("set device start");
-            if (_capture != null)
+            lock (_syncLock)
             {
-                _capture.DataAvailable -= SendAudioData;
-            }
-            _capture?.Dispose();
-            Stoped?.Invoke(null, null);
-            if (_device != null)
-            {
-                _device.AudioEndpointVolume.OnVolumeNotification -= OnVolumeChange;
-            }
-            if(device == null && sampleRate == 0)
-            {
-                _device?.Dispose();
-            }
-            _device = device;
-            OnVolumeNotification?.Invoke(null, (int)((_device?.AudioEndpointVolume.MasterVolumeLevelScalar ?? 0) * 100));
-            _sampleRate = sampleRate;
-            if (_device == null)
-            {
+                if (mode.HasValue) CaptureMode = mode.Value;
+                Logger.Info($"set device start mode={_mode} notifyStop={notifyStop}");
+                if (_capture != null)
+                {
+                    _capture.DataAvailable -= SendAudioData;
+                }
+                _capture?.Dispose();
                 _capture = null;
-                return;
+                if (notifyStop)
+                {
+                    Stoped?.Invoke(null, null);
+                }
+                if (_device != null)
+                {
+                    _device.AudioEndpointVolume.OnVolumeNotification -= OnVolumeChange;
+                }
+                if (device == null && sampleRate == 0)
+                {
+                    _device?.Dispose();
+                }
+                _device = device;
+                if (_device != null)
+                {
+                    _awaitedDeviceId = null;
+                }
+                OnVolumeNotification?.Invoke(null, (int)((_device?.AudioEndpointVolume.MasterVolumeLevelScalar ?? 0) * 100));
+                _sampleRate = sampleRate;
+                if (_device == null)
+                {
+                    return;
+                }
+                ReadMixFormat();
+                RebuildCapture();
+                _captureRestarts = 0;
+                _deviceRecoveries = 0;
+                _device.AudioEndpointVolume.OnVolumeNotification += OnVolumeChange;
+                Logger.Info("set device end");
             }
-            ReadMixFormat();
-            // Capture the device's own channel layout (2.1/5.1/7.1...) instead of
-            // forcing a stereo downmix, so each channel can be routed to its own
-            // playback device. WASAPI auto-converts rate/depth/channels.
-            _capture = new WasapiLoopbackCapture(device);
+        }
+
+        private static void RebuildCapture()
+        {
+            _capture = CreateCapture(_device);
             _capture.WaveFormat = new WaveFormat(_sampleRate, 16, _channelCount);
             _capture.DataAvailable += SendAudioData;
+            _capture.RecordingStopped += OnRecordingStopped;
+            RegisterDeviceNotifications();
             if (AudioFrameAvailable != null)
             {
                 StartCapture();
             }
-            _device.AudioEndpointVolume.OnVolumeNotification += OnVolumeChange;
-            Logger.Info("set device end");
+        }
+
+        private static void RegisterDeviceNotifications()
+        {
+            if (_deviceNotificationsRegistered) return;
+            try
+            {
+                _deviceEnumerator.RegisterEndpointNotificationCallback(_deviceNotifications);
+                _deviceNotificationsRegistered = true;
+            }
+            catch (Exception ex)
+            {
+                Logger.Error("register device notifications failed: " + ex.Message);
+            }
         }
 
         public static void StartCapture()
@@ -196,9 +297,10 @@ namespace AudioShare
                     _capture.StartRecording();
                 }
             }
-            catch (Exception)
+            catch (Exception ex)
             {
-
+                Logger.Error("start capture error: " + ex.Message);
+                CaptureError?.Invoke(null, "captureError");
             }
         }
 
@@ -208,9 +310,158 @@ namespace AudioShare
             {
                 _capture?.StopRecording();
             }
-            catch (Exception)
+            catch (Exception ex)
             {
+                Logger.Error("stop capture error: " + ex.Message);
+            }
+        }
 
+        private static void OnRecordingStopped(object sender, StoppedEventArgs e)
+        {
+            // Intentional stops (device change, shutdown) carry no exception;
+            // only a crashed capture thread needs recovery.
+            if (e?.Exception == null) return;
+            Logger.Error("capture stopped: " + e.Exception.Message);
+            if (_device == null || _awaitedDeviceId != null) return;
+            if (_captureRestarts >= MaxCaptureRestarts)
+            {
+                Logger.Error("capture restart limit reached");
+                CaptureError?.Invoke(null, "captureError");
+                return;
+            }
+            _captureRestarts++;
+            if (_restartTimer == null)
+            {
+                _restartTimer = new Timer(RestartCapture);
+            }
+            _restartTimer.Change(RestartDelayMs, Timeout.Infinite);
+        }
+
+        private static void RestartCapture(object state)
+        {
+            // A dead capture cannot be resumed on the same AudioClient; rebuild
+            // it from scratch. TryEnter so a concurrent UI SetDevice wins.
+            if (!Monitor.TryEnter(_syncLock)) return;
+            try
+            {
+                if (_device == null || _capture == null || _awaitedDeviceId != null) return;
+                if (_capture.CaptureState == CaptureState.Capturing) return;
+                Logger.Info("capture auto-restart");
+                _capture.DataAvailable -= SendAudioData;
+                _capture.Dispose();
+                RebuildCapture();
+            }
+            catch (Exception ex)
+            {
+                Logger.Error("capture restart failed: " + ex.Message);
+            }
+            finally
+            {
+                Monitor.Exit(_syncLock);
+            }
+        }
+
+        private static void OnCurrentDeviceLost(string deviceId, string reason)
+        {
+            if (_device == null || _awaitedDeviceId != null) return;
+            if (!string.Equals(_device.ID, deviceId, StringComparison.OrdinalIgnoreCase)) return;
+            Logger.Warning($"capture device lost ({reason})");
+            _awaitedDeviceId = deviceId;
+            _deviceRecoveries = 0;
+            StopCapture();
+            CaptureError?.Invoke(null, "captureDeviceLost");
+        }
+
+        private static void TryRecoverDevice(string deviceId, string reason)
+        {
+            if (_device == null || _awaitedDeviceId == null) return;
+            if (!string.Equals(_awaitedDeviceId, deviceId, StringComparison.OrdinalIgnoreCase)) return;
+            if (_deviceRecoveries >= MaxDeviceRecoveries)
+            {
+                _awaitedDeviceId = null;
+                return;
+            }
+            MMDevice fresh = FindActiveDevice(deviceId);
+            if (fresh == null) return;
+            lock (_syncLock)
+            {
+                _awaitedDeviceId = null;
+                _deviceRecoveries++;
+                if (_device != null)
+                {
+                    _device.AudioEndpointVolume.OnVolumeNotification -= OnVolumeChange;
+                }
+                _device = fresh;
+                OnVolumeNotification?.Invoke(null, (int)((_device?.AudioEndpointVolume.MasterVolumeLevelScalar ?? 0) * 100));
+                _capture?.Dispose();
+                _capture = null;
+                Logger.Info($"capture device returned ({reason}), restarting capture");
+                ReadMixFormat();
+                RebuildCapture();
+                _captureRestarts = 0;
+            }
+        }
+
+        private static MMDevice FindActiveDevice(string deviceId)
+        {
+            try
+            {
+                foreach (var device in _deviceEnumerator.EnumerateAudioEndPoints(DataFlow.Render, DeviceState.Active))
+                {
+                    if (string.Equals(device.ID, deviceId, StringComparison.OrdinalIgnoreCase))
+                    {
+                        return device;
+                    }
+                    device.Dispose();
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Error("enumerate devices failed: " + ex.Message);
+            }
+            return null;
+        }
+
+        private class DeviceNotifications : IMMNotificationClient
+        {
+            public void OnDeviceStateChanged(string deviceId, DeviceState newState)
+            {
+                if (newState == DeviceState.Active)
+                {
+                    // Driver resets often re-activate the same endpoint without
+                    // a remove/add pair, so recovery listens here too.
+                    TryRecoverDevice(deviceId, "state active");
+                }
+                else
+                {
+                    OnCurrentDeviceLost(deviceId, "state " + newState);
+                }
+            }
+
+            public void OnDeviceAdded(string deviceId)
+            {
+                TryRecoverDevice(deviceId, "added");
+            }
+
+            public void OnDeviceRemoved(string deviceId)
+            {
+                OnCurrentDeviceLost(deviceId, "removed");
+            }
+
+            public void OnDefaultDeviceChanged(DataFlow flow, Role role, string defaultDeviceId)
+            {
+                // Only a hint: the capture follows the user-picked device, so a
+                // changed system default can leave speakers silent with no clue why.
+                if (flow != DataFlow.Render || AudioFrameAvailable == null) return;
+                if (role != Role.Console && role != Role.Multimedia) return;
+                if (_device == null) return;
+                if (string.Equals(_device.ID, defaultDeviceId, StringComparison.OrdinalIgnoreCase)) return;
+                Logger.Info($"default render device changed to {defaultDeviceId}");
+                CaptureError?.Invoke(null, "captureDeviceChanged");
+            }
+
+            public void OnPropertyValueChanged(string deviceId, PropertyKey key)
+            {
             }
         }
 

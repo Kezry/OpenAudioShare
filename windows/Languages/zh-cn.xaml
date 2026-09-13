@@ -16,6 +16,15 @@
     <s:String x:Key="volume">音量：</s:String>
     <s:String x:Key="followSystem">跟随系统</s:String>
     <s:String x:Key="gain">增益：</s:String>
+    <s:String x:Key="captureMode">采集模式：</s:String>
+    <s:String x:Key="captureModeTip">如声音断续、无声或爆音，请尝试切换采集模式（切换时不断开播放）</s:String>
+    <s:String x:Key="captureModeDefault">默认（轮询 100ms）</s:String>
+    <s:String x:Key="captureModeEvent">事件驱动（100ms）</s:String>
+    <s:String x:Key="captureModeLowLatency">低延迟（事件 20ms）</s:String>
+    <s:String x:Key="captureModeCompatible">兼容（轮询 200ms）</s:String>
+    <s:String x:Key="captureError">音频采集异常且自动恢复失败，请尝试切换采集模式</s:String>
+    <s:String x:Key="captureDeviceLost">音频设备已断开，重新连接后将继续播放</s:String>
+    <s:String x:Key="captureDeviceChanged">系统默认音频设备已更改，如无声请重新选择音频设备</s:String>
     <s:String x:Key="apkExistsTips">下载apk至当前目录</s:String>
     <s:String x:Key="apkMisMatch">app未安装或版本不匹配，请手动安装</s:String>
     <s:String x:Key="adbMisMatch">ADB不存在，请下载至当前目录</s:String>

@@ -7,7 +7,7 @@
         xmlns:local="clr-namespace:AudioShare"
         mc:Ignorable="d" WindowStartupLocation="CenterScreen"
         d:DataContext="{d:DesignInstance Type=local:Model}"
-        Title="{DynamicResource title}" Height="392" Width="500" ResizeMode="NoResize"
+        Title="{DynamicResource title}" Height="436" Width="500" ResizeMode="NoResize"
              ExtendsContentIntoTitleBar="True"
              WindowCornerPreference="Round">
     <ui:UiWindow.Resources>
@@ -64,6 +64,13 @@
                           SelectedValue="{Binding SampleRate, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
                 <ui:Button Appearance="Info" Height="30" Width="80" Content="{DynamicResource refresh}"
                            Margin="10 0 0 0" Command="{Binding RefreshAudiosCommand}" IsEnabled="{Binding AudioEnabled}"/>
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" Margin="0 5 0 0">
+                <Label Margin="0" Content="{DynamicResource captureMode}" VerticalAlignment="Bottom" Padding="0"/>
+                <ComboBox Height="30" Width="220" Margin="5 0 0 0" VerticalAlignment="Center" Padding="6 6 0 6"
+                          ItemsSource="{Binding CaptureModes}" SelectedValuePath="Key" DisplayMemberPath="Value"
+                          SelectedValue="{Binding CaptureMode, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                          ToolTip="{DynamicResource captureModeTip}"/>
             </StackPanel>
             <Grid Width="400" Margin="0 5 0 0">
                 <StackPanel>

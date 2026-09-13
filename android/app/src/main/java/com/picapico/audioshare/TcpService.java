@@ -75,6 +75,10 @@ public class TcpService extends NotificationService {
     private int mSampleRate = 44100;
     private int mBytesPerFrame = 4;
     private static final int RESEED_GAP_MS = 1500;
+    // Bounds of the Windows sender's sample-rate dropdown; anything outside
+    // the handshake is garbage, not a format AudioTrack should ever see.
+    private static final int MIN_SAMPLE_RATE = 4000;
+    private static final int MAX_SAMPLE_RATE = 192000;
     private final byte[] _readHeadBuf = new byte[20];
     private final byte[] _readIntBuf = new byte[4];
     private static final byte[] _heartBeatByte = new byte[1];
@@ -254,6 +258,16 @@ public class TcpService extends NotificationService {
         if(command == 1 && !getPlaying()){
             int sampleRate = readInt(stream);
             int channel = readInt(stream);
+            if (sampleRate < MIN_SAMPLE_RATE || sampleRate > MAX_SAMPLE_RATE) {
+                // A corrupted or foreign handshake must not reach AudioTrack;
+                // reject it instead of building a player around garbage.
+                Log.w(TAG, "rejecting audio stream, bad sample rate: " + sampleRate);
+                try {
+                    socket.close();
+                } catch (IOException ignored) {
+                }
+                return;
+            }
             int audioFormat = AudioFormat.ENCODING_PCM_16BIT;
             int channelCount = (channel == AudioFormat.CHANNEL_OUT_STEREO) ? 2 : 1;
             mSampleRate = sampleRate;

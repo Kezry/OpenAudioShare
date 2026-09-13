@@ -63,6 +63,17 @@ Enable the "Auto Connect" toggle to automatically connect all saved devices when
 
 When multiple devices play simultaneously, the app measures each device's network latency and compensates for the difference, and re-aligns automatically on every track change. If you still notice drift during playback, click the "Audio Sync" button to correct it immediately.
 
+### Capture Mode
+
+Sound card drivers vary a lot between PCs. If playback stutters, goes silent or crackles, switch the capture mode manually in the "Capture mode" dropdown on the Windows side:
+
++ Default (poll 100ms): the regular mode that works on most devices.
++ Event-driven (100ms): more stable on drivers that misbehave with polling.
++ Low latency (event 20ms): a low-latency variant of event-driven; slightly more demanding on network and machine.
++ Compatible (poll 200ms): for weaker machines or networks with heavy jitter.
+
+Switching the capture mode does not disconnect playback devices; audio resumes automatically after a brief gap. Capture failures are auto-recovered, and a device that is unplugged and plugged back in (or revived by a driver reset) resumes capture on its own, with a system toast explaining any problem.
+
 ### Phicomm R1 atmosphere light
 
 1. Authorize the app to obtain Android root privileges.

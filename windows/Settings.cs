@@ -23,6 +23,7 @@ namespace AudioShare
         public int SampleRate { get; set; } = 48000;
         public int Volume { get; set; } = 50;
         public int Gain { get; set; } = 100;
+        public int CaptureMode { get; set; } = 0;
         public bool IsUSB { get; set; } = true;
         public bool VolumeFollowSystem { get; set; } = true;
         public bool Acrylic { get; set; } = true;

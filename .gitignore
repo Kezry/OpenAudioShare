@@ -38,3 +38,6 @@ Desktop.ini
 local-info/
 # local build deliverables
 artifacts/
+
+# local CI mirror of build deliverables
+artifacts-ci/
