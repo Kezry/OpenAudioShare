@@ -16,6 +16,8 @@
     <s:String x:Key="volume">音量：</s:String>
     <s:String x:Key="followSystem">跟随系统</s:String>
     <s:String x:Key="gain">增益：</s:String>
+    <s:String x:Key="autoGain">自动音量</s:String>
+    <s:String x:Key="autoGainTip">自动把不同电脑的采集响度归一到相同电平（换歌或静音后需数秒重新适应）</s:String>
     <s:String x:Key="captureMode">采集模式：</s:String>
     <s:String x:Key="captureModeTip">如声音断续、无声或爆音，请尝试切换采集模式（切换时不断开播放）</s:String>
     <s:String x:Key="captureModeDefault">默认（轮询 100ms）</s:String>

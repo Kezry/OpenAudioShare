@@ -11,6 +11,7 @@ AudioShare is an application that allows you to transfer real-time sound from yo
 + Real time transmission: Real time transmission of sound from Windows computers to Android devices with low latency and high sound quality.
 + Multi device support: Supports multiple Android devices to connect simultaneously, and can play different sounds according to different channels.
 + Multi-channel support: Captures audio in the actual channel layout of the system output device (2.0/2.1/5.1/7.1, etc.). Each playback device can be assigned any channel (front left/right, center, LFE, surround, back) to build a distributed surround system.
++ Auto volume: When enabled, capture loudness is normalized to the same level, solving volume differences between PCs.
 + LAN device discovery: Playback devices on the LAN are discovered automatically at startup in Wi-Fi mode, and can also be found instantly via the "Search Devices" button.
 + Multi-device sync: Network latency is measured per device and compensated automatically; playback is re-aligned on every track change, with a manual "Audio Sync" button for immediate correction.
 + Two connection methods: supports USB data cable and Wi Fi network connection.
@@ -73,6 +74,10 @@ Sound card drivers vary a lot between PCs. If playback stutters, goes silent or 
 + Compatible (poll 200ms): for weaker machines or networks with heavy jitter.
 
 Switching the capture mode does not disconnect playback devices; audio resumes automatically after a brief gap. Capture failures are auto-recovered, and a device that is unplugged and plugged back in (or revived by a driver reset) resumes capture on its own, with a system toast explaining any problem.
+
+### Auto Volume
+
+The mix level differs between PCs (per-app mixer volumes, driver enhancements and source loudness all play a part), so even at 100% system volume the streamed audio may be too loud or too quiet. With the "Auto volume" switch on the Windows side enabled, the app measures the capture level in real time and converges its gain to a fixed loudness (adapting within a few seconds), so all PCs play at about the same volume. The gain slider still works as a manual trim on top of the automatic adjustment.
 
 ### Phicomm R1 atmosphere light
 

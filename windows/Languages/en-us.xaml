@@ -16,6 +16,8 @@
     <s:String x:Key="volume">Volume: </s:String>
     <s:String x:Key="followSystem">Follow system</s:String>
     <s:String x:Key="gain">Gain: </s:String>
+    <s:String x:Key="autoGain">Auto volume</s:String>
+    <s:String x:Key="autoGainTip">Normalizes capture loudness across PCs; needs a few seconds to adapt after track changes or silence</s:String>
     <s:String x:Key="captureMode">Capture mode: </s:String>
     <s:String x:Key="captureModeTip">If audio stutters, goes silent or crackles, try another capture mode (switching keeps playback connected)</s:String>
     <s:String x:Key="captureModeDefault">Default (poll 100ms)</s:String>

@@ -58,6 +58,9 @@ namespace AudioShare
         private static int _channelMask = 0x3;
         private static bool _wasSilent = true;
         private static float _gain = 1f;
+        private static bool _autoGain;
+        private static double _agcEnvelope;
+        private static double _agcGain = 1.0;
         private static int _captureRestarts;
         private static int _deviceRecoveries;
         private static string _awaitedDeviceId;
@@ -88,6 +91,28 @@ namespace AudioShare
         {
             get => _gain;
             set => _gain = Math.Max(0.25f, Math.Min(4f, value));
+        }
+
+        // Loudness normalization across machines. The loopback mix level varies
+        // a lot between PCs even at 100% master volume (per-app mixer volumes,
+        // driver enhancements, source loudness), so the adaptive gain converges
+        // to a fixed RMS target; the manual gain slider still trims on top.
+        private const double AgcTargetLevel = 0.12;              // ~ -18 dBFS RMS
+        private const double AgcMinGain = 0.25;
+        private const double AgcMaxGain = 8.0;
+        private const double AgcSilencePeak = 64.0 / 32768.0;    // ~ -54 dBFS, don't chase noise
+        private const double AgcSlewDbPerSec = 6.0;              // keep gain moves inaudible
+        private const double AgcEnvelopeTauSec = 0.5;
+
+        public static bool AutoGain
+        {
+            get => _autoGain;
+            set
+            {
+                _autoGain = value;
+                _agcEnvelope = 0;
+                _agcGain = 1.0;
+            }
         }
 
         // Loopback only differs from a normal capture by the Loopback stream
@@ -267,6 +292,8 @@ namespace AudioShare
             _capture.DataAvailable += SendAudioData;
             _capture.RecordingStopped += OnRecordingStopped;
             RegisterDeviceNotifications();
+            _agcEnvelope = 0;
+            _agcGain = 1.0;
             if (AudioFrameAvailable != null)
             {
                 StartCapture();
@@ -494,8 +521,49 @@ namespace AudioShare
 
         private static void ApplyGain(byte[] buffer, int length)
         {
+            if (_autoGain)
+            {
+                ApplyAutoGain(buffer, length);
+                return;
+            }
             if (_gain == 1f || length < 2) return;
-            float gain = _gain;
+            ScaleSamples(buffer, length, _gain);
+        }
+
+        private static void ApplyAutoGain(byte[] buffer, int length)
+        {
+            int samples = length >> 1;
+            if (samples <= 0 || _sampleRate <= 0) return;
+            long sumSq = 0;
+            int maxAbs = 0;
+            for (int i = 1; i < length; i += 2)
+            {
+                short sample = (short)(buffer[i - 1] | (buffer[i] << 8));
+                sumSq += sample * sample;
+                int abs = sample == short.MinValue ? short.MaxValue : Math.Abs(sample);
+                if (abs > maxAbs) maxAbs = abs;
+            }
+            double peak = maxAbs / 32768.0;
+            if (peak >= AgcSilencePeak)
+            {
+                double rms = Math.Sqrt((double)sumSq / samples) / 32768.0;
+                double frameSec = samples / (double)(_sampleRate * Math.Max(1, _channelCount));
+                double alpha = 1.0 - Math.Exp(-frameSec / AgcEnvelopeTauSec);
+                _agcEnvelope += (rms - _agcEnvelope) * alpha;
+                if (_agcEnvelope > 1e-6)
+                {
+                    double target = Math.Max(AgcMinGain, Math.Min(AgcMaxGain, AgcTargetLevel / _agcEnvelope));
+                    double slew = Math.Pow(10.0, AgcSlewDbPerSec * frameSec / 20.0);
+                    if (target > _agcGain) _agcGain = Math.Min(target, _agcGain * slew);
+                    else _agcGain = Math.Max(target, _agcGain / slew);
+                }
+            }
+            ScaleSamples(buffer, length, _agcGain * _gain);
+        }
+
+        private static void ScaleSamples(byte[] buffer, int length, double gain)
+        {
+            if (gain == 1f || length < 2) return;
             for (int i = 0; i + 1 < length; i += 2)
             {
                 short sample = (short)(buffer[i] | (buffer[i + 1] << 8));

@@ -34,6 +34,7 @@ namespace AudioShare
         {
             _dispatcher = Dispatcher.CurrentDispatcher;
             AudioManager.Gain = _settings.Gain / 100f;
+            AudioManager.AutoGain = _settings.AutoGain;
             AudioManager.CaptureMode = (CaptureMode)_settings.CaptureMode;
             AudioManager.OnVolumeNotification += OnVolumeChanged;
             AudioManager.OnAudioResumed += OnAudioResumed;
@@ -343,6 +344,18 @@ namespace AudioShare
                 _settings.Save();
                 AudioManager.Gain = gain / 100f;
                 OnPropertyChanged(nameof(Gain));
+            }
+        }
+        public bool AutoGain
+        {
+            get => _settings.AutoGain;
+            set
+            {
+                if (_settings.AutoGain == value) return;
+                _settings.AutoGain = value;
+                _settings.Save();
+                AudioManager.AutoGain = value;
+                OnPropertyChanged(nameof(AutoGain));
             }
         }
         public CaptureMode CaptureMode
