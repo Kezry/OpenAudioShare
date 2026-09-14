@@ -35,6 +35,8 @@ namespace AudioShare
             _dispatcher = Dispatcher.CurrentDispatcher;
             AudioManager.Gain = _settings.Gain / 100f;
             AudioManager.AutoGain = _settings.AutoGain;
+            AudioManager.CaptureModeChosen = _settings.CaptureModeChosen;
+            AudioManager.CaptureProfile = (CaptureProfile)_settings.CaptureProfile;
             AudioManager.CaptureMode = (CaptureMode)_settings.CaptureMode;
             AudioManager.OnVolumeNotification += OnVolumeChanged;
             AudioManager.OnAudioResumed += OnAudioResumed;
@@ -243,6 +245,14 @@ namespace AudioShare
             new KeyValuePair<CaptureMode, string>(CaptureMode.LowLatency, Languages.Language.GetLanguageText("captureModeLowLatency")),
             new KeyValuePair<CaptureMode, string>(CaptureMode.Compatible, Languages.Language.GetLanguageText("captureModeCompatible")),
         };
+        public ObservableCollection<KeyValuePair<CaptureProfile, string>> CaptureProfiles => new ObservableCollection<KeyValuePair<CaptureProfile, string>>()
+        {
+            new KeyValuePair<CaptureProfile, string>(CaptureProfile.Auto, Languages.Language.GetLanguageText("profileAuto")),
+            new KeyValuePair<CaptureProfile, string>(CaptureProfile.Generic, Languages.Language.GetLanguageText("profileGeneric")),
+            new KeyValuePair<CaptureProfile, string>(CaptureProfile.Realtek, Languages.Language.GetLanguageText("profileRealtek")),
+            new KeyValuePair<CaptureProfile, string>(CaptureProfile.Dolby, Languages.Language.GetLanguageText("profileDolby")),
+            new KeyValuePair<CaptureProfile, string>(CaptureProfile.SmartAudio, Languages.Language.GetLanguageText("profileSmartAudio")),
+        };
         public ImageSource Icon => Utils.AppIcon;
         public string Title => Languages.Language.GetLanguageText("title") + " " + Utils.VersionName;
         public void UpdateTitle()
@@ -365,6 +375,10 @@ namespace AudioShare
             {
                 if (CaptureMode == value) return;
                 _settings.CaptureMode = (int)value;
+                // Mark that the user picked a mode so profile recommendations
+                // never override an explicit choice.
+                _settings.CaptureModeChosen = true;
+                AudioManager.CaptureModeChosen = true;
                 _settings.Save();
                 // Sync the static first so the mode also sticks when no device
                 // is selected yet (SetDevice would otherwise keep the old one).
@@ -378,6 +392,34 @@ namespace AudioShare
                     AudioManager.SetDevice(mDevice, _settings.SampleRate, notifyStop: false);
                 }
                 OnPropertyChanged(nameof(CaptureMode));
+            }
+        }
+        public CaptureProfile CaptureProfile
+        {
+            get
+            {
+                int p = Math.Max(0, Math.Min((int)CaptureProfile.SmartAudio, _settings.CaptureProfile));
+                return (CaptureProfile)p;
+            }
+            set
+            {
+                if (CaptureProfile == value) return;
+                var before = AudioManager.EffectiveCaptureMode;
+                _settings.CaptureProfile = (int)value;
+                _settings.Save();
+                // AGC parameters apply live; only a changed capture-mode
+                // recommendation needs a rebuild, without dropping speakers.
+                AudioManager.CaptureProfile = value;
+                OnPropertyChanged(nameof(CaptureProfile));
+                var after = AudioManager.EffectiveCaptureMode;
+                if (before != after)
+                {
+                    var mDevice = _audioDevices.FirstOrDefault(m => m.ID == _settings.AudioId);
+                    if (mDevice != null)
+                    {
+                        AudioManager.SetDevice(mDevice, _settings.SampleRate, notifyStop: false);
+                    }
+                }
             }
         }
         private bool _adbLoading = false;

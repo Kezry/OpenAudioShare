@@ -24,6 +24,13 @@
     <s:String x:Key="captureModeEvent">事件驱动（100ms）</s:String>
     <s:String x:Key="captureModeLowLatency">低延迟（事件 20ms）</s:String>
     <s:String x:Key="captureModeCompatible">兼容（轮询 200ms）</s:String>
+    <s:String x:Key="captureProfile">适配：</s:String>
+    <s:String x:Key="captureProfileTip">按声卡驱动自动选择参数（杜比/智音类驱动自动使用保守响度调节，智音类还默认事件驱动采集）；检测不准时可手动指定</s:String>
+    <s:String x:Key="profileAuto">自动检测</s:String>
+    <s:String x:Key="profileGeneric">通用</s:String>
+    <s:String x:Key="profileRealtek">Realtek 公版</s:String>
+    <s:String x:Key="profileDolby">杜比</s:String>
+    <s:String x:Key="profileSmartAudio">智音/MaxxAudio</s:String>
     <s:String x:Key="captureError">音频采集异常且自动恢复失败，请尝试切换采集模式</s:String>
     <s:String x:Key="captureDeviceLost">音频设备已断开，重新连接后将继续播放</s:String>
     <s:String x:Key="captureDeviceChanged">系统默认音频设备已更改，如无声请重新选择音频设备</s:String>

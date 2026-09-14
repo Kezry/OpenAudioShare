@@ -2,6 +2,7 @@
 using NAudio.CoreAudioApi.Interfaces;
 using NAudio.Wave;
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
@@ -14,6 +15,17 @@ namespace AudioShare
         EventSync = 1,
         LowLatency = 2,
         Compatible = 3,
+    }
+
+    // Vendor DSP stacks shape the loopback mix differently; the profile picks
+    // AGC parameters (and a recommended capture mode) to match.
+    public enum CaptureProfile
+    {
+        Auto = 0,
+        Generic = 1,
+        Realtek = 2,
+        Dolby = 3,
+        SmartAudio = 4,
     }
 
     public class AudioFrameEventArgs : EventArgs
@@ -54,6 +66,8 @@ namespace AudioShare
         private static MMDevice _device;
         private static int _sampleRate;
         private static CaptureMode _mode = CaptureMode.Default;
+        private static CaptureProfile _profile = CaptureProfile.Auto;
+        private static CaptureProfile? _detectedProfile;
         private static int _channelCount = 2;
         private static int _channelMask = 0x3;
         private static bool _wasSilent = true;
@@ -83,6 +97,41 @@ namespace AudioShare
             }
         }
 
+        public static CaptureProfile CaptureProfile
+        {
+            get => _profile;
+            set
+            {
+                int v = (int)value;
+                if (v < 0 || v > (int)CaptureProfile.SmartAudio)
+                {
+                    v = 0;
+                }
+                _profile = (CaptureProfile)v;
+                ResolveProfileParams();
+            }
+        }
+
+        public static CaptureProfile EffectiveProfile => _profile != CaptureProfile.Auto ? _profile : DetectedProfile;
+
+        // Set once the user picks a capture mode themselves; until then a
+        // driver profile may recommend a different one.
+        public static bool CaptureModeChosen { get; set; }
+
+        public static CaptureMode EffectiveCaptureMode
+        {
+            get
+            {
+                if (!CaptureModeChosen && _mode == CaptureMode.Default && EffectiveProfile == CaptureProfile.SmartAudio)
+                {
+                    // Lenovo SmartAudio / Intel SST loopback is a known
+                    // stutterer with poll sync; event sync is steadier there.
+                    return CaptureMode.EventSync;
+                }
+                return _mode;
+            }
+        }
+
         // Software boost applied to captured samples before they are handed to
         // speakers. Loopback taps the mix *after* endpoint volume, so machines
         // that keep Windows volume low (with loud amplified speakers) stream a
@@ -97,12 +146,190 @@ namespace AudioShare
         // a lot between PCs even at 100% master volume (per-app mixer volumes,
         // driver enhancements, source loudness), so the adaptive gain converges
         // to a fixed RMS target; the manual gain slider still trims on top.
-        private const double AgcTargetLevel = 0.12;              // ~ -18 dBFS RMS
         private const double AgcMinGain = 0.25;
-        private const double AgcMaxGain = 8.0;
         private const double AgcSilencePeak = 64.0 / 32768.0;    // ~ -54 dBFS, don't chase noise
-        private const double AgcSlewDbPerSec = 6.0;              // keep gain moves inaudible
         private const double AgcEnvelopeTauSec = 0.5;
+        // Effective values, resolved per capture profile.
+        private static double _agcTarget = 0.12;                 // ~ -18 dBFS RMS
+        private static double _agcMaxGain = 8.0;
+        private static double _agcSlewDbPerSec = 6.0;            // keep gain moves inaudible
+
+        private static void ResolveProfileParams()
+        {
+            switch (EffectiveProfile)
+            {
+                case CaptureProfile.Dolby:
+                    // The Dolby APO already loudness-normalizes and limits;
+                    // heavy AGC on top audibly pumps. Trim gently, stop early.
+                    _agcTarget = 0.10;
+                    _agcMaxGain = 2.0;
+                    _agcSlewDbPerSec = 3.0;
+                    break;
+                case CaptureProfile.SmartAudio:
+                    // MaxxAudio/SmartAudio stacks normalize too, just less hot.
+                    _agcTarget = 0.11;
+                    _agcMaxGain = 2.5;
+                    _agcSlewDbPerSec = 3.0;
+                    break;
+                case CaptureProfile.Realtek:
+                    // Stock Realtek mixes run quiet; aim slightly hotter.
+                    _agcTarget = 0.14;
+                    _agcMaxGain = 8.0;
+                    _agcSlewDbPerSec = 6.0;
+                    break;
+                default:
+                    _agcTarget = 0.12;
+                    _agcMaxGain = 8.0;
+                    _agcSlewDbPerSec = 6.0;
+                    break;
+            }
+        }
+
+        private static readonly string[] SmartAudioKeywords =
+        {
+            "maxxaudio", "maxx audio", "smartaudio", "smart audio", "waves",
+            "conexant", "synaptics", "smart sound", "智音",
+        };
+
+        private static CaptureProfile DetectedProfile
+        {
+            get
+            {
+                if (!_detectedProfile.HasValue)
+                {
+                    _detectedProfile = DetectProfile();
+                }
+                return _detectedProfile.Value;
+            }
+        }
+
+        // Vendor DSPs advertise themselves in machine-wide registry text;
+        // there is no direct query API on net462, so fingerprint from three
+        // read-only sources: adapter driver descriptions, service display
+        // names, and installed-program entries.
+        private static CaptureProfile DetectProfile()
+        {
+            var signatures = new List<KeyValuePair<string, string>>();
+            try
+            {
+                using (var cls = Microsoft.Win32.Registry.LocalMachine.OpenSubKey(
+                    @"SYSTEM\CurrentControlSet\Control\Class\{4d36e96c-e325-11ce-bfc1-08002be10318}"))
+                {
+                    if (cls != null)
+                    {
+                        foreach (string name in cls.GetSubKeyNames())
+                        {
+                            using (var sub = cls.OpenSubKey(name))
+                            {
+                                string desc = sub?.GetValue("DriverDesc") as string;
+                                if (!string.IsNullOrEmpty(desc))
+                                {
+                                    signatures.Add(new KeyValuePair<string, string>("driver", desc));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Error("profile driver scan failed: " + ex.Message);
+            }
+            try
+            {
+                using (var services = Microsoft.Win32.Registry.LocalMachine.OpenSubKey(@"SYSTEM\CurrentControlSet\Services"))
+                {
+                    if (services != null)
+                    {
+                        foreach (string name in services.GetSubKeyNames())
+                        {
+                            using (var sub = services.OpenSubKey(name))
+                            {
+                                string display = sub?.GetValue("DisplayName") as string;
+                                if (!string.IsNullOrEmpty(display))
+                                {
+                                    signatures.Add(new KeyValuePair<string, string>("service", display));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Error("profile service scan failed: " + ex.Message);
+            }
+            foreach (string view in new[]
+            {
+                @"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall",
+                @"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall",
+            })
+            {
+                try
+                {
+                    using (var uninstall = Microsoft.Win32.Registry.LocalMachine.OpenSubKey(view))
+                    {
+                        if (uninstall == null) continue;
+                        foreach (string name in uninstall.GetSubKeyNames())
+                        {
+                            using (var sub = uninstall.OpenSubKey(name))
+                            {
+                                string display = sub?.GetValue("DisplayName") as string;
+                                if (!string.IsNullOrEmpty(display))
+                                {
+                                    signatures.Add(new KeyValuePair<string, string>("program", display));
+                                }
+                            }
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Logger.Error("profile program scan failed: " + ex.Message);
+                }
+            }
+            // Dolby is checked first: it commonly layers on a Realtek stack.
+            if (TryMatchSignature(signatures, "dolby", out string hit))
+            {
+                Logger.Info($"audio profile: Dolby (matched '{Shorten(hit)}')");
+                return CaptureProfile.Dolby;
+            }
+            foreach (string keyword in SmartAudioKeywords)
+            {
+                if (TryMatchSignature(signatures, keyword, out hit))
+                {
+                    Logger.Info($"audio profile: SmartAudio (matched '{keyword}' in '{Shorten(hit)}')");
+                    return CaptureProfile.SmartAudio;
+                }
+            }
+            if (TryMatchSignature(signatures, "realtek", out hit))
+            {
+                Logger.Info($"audio profile: Realtek (matched '{Shorten(hit)}')");
+                return CaptureProfile.Realtek;
+            }
+            Logger.Info("audio profile: Generic (no vendor DSP fingerprint found)");
+            return CaptureProfile.Generic;
+        }
+
+        private static bool TryMatchSignature(List<KeyValuePair<string, string>> signatures, string keyword, out string hit)
+        {
+            foreach (var entry in signatures)
+            {
+                if (entry.Value.IndexOf(keyword, StringComparison.OrdinalIgnoreCase) >= 0)
+                {
+                    hit = entry.Key + ": " + entry.Value;
+                    return true;
+                }
+            }
+            hit = null;
+            return false;
+        }
+
+        private static string Shorten(string text)
+        {
+            if (string.IsNullOrEmpty(text) || text.Length <= 80) return text;
+            return text.Substring(0, 80) + "...";
+        }
 
         public static bool AutoGain
         {
@@ -133,7 +360,7 @@ namespace AudioShare
 
         private static WasapiCapture CreateCapture(MMDevice device)
         {
-            switch (_mode)
+            switch (EffectiveCaptureMode)
             {
                 case CaptureMode.EventSync:
                     return new LoopbackCapture(device, true, 100);
@@ -197,7 +424,7 @@ namespace AudioShare
                 Logger.Error("read mix format error: " + ex.Message);
             }
             if (_channelMask == 0) _channelMask = DefaultMask(_channelCount);
-            Logger.Info($"capture format: {_sampleRate}Hz {_channelCount}ch mask=0x{_channelMask:X} mode={_mode}");
+            Logger.Info($"capture format: {_sampleRate}Hz {_channelCount}ch mask=0x{_channelMask:X} mode={EffectiveCaptureMode} profile={EffectiveProfile}");
         }
 
         private static int ReadChannelMask(WaveFormat format)
@@ -246,7 +473,7 @@ namespace AudioShare
             lock (_syncLock)
             {
                 if (mode.HasValue) CaptureMode = mode.Value;
-                Logger.Info($"set device start mode={_mode} notifyStop={notifyStop}");
+                Logger.Info($"set device start mode={EffectiveCaptureMode} profile={EffectiveProfile} notifyStop={notifyStop}");
                 if (_capture != null)
                 {
                     _capture.DataAvailable -= SendAudioData;
@@ -287,6 +514,7 @@ namespace AudioShare
 
         private static void RebuildCapture()
         {
+            ResolveProfileParams();
             _capture = CreateCapture(_device);
             _capture.WaveFormat = new WaveFormat(_sampleRate, 16, _channelCount);
             _capture.DataAvailable += SendAudioData;
@@ -552,8 +780,8 @@ namespace AudioShare
                 _agcEnvelope += (rms - _agcEnvelope) * alpha;
                 if (_agcEnvelope > 1e-6)
                 {
-                    double target = Math.Max(AgcMinGain, Math.Min(AgcMaxGain, AgcTargetLevel / _agcEnvelope));
-                    double slew = Math.Pow(10.0, AgcSlewDbPerSec * frameSec / 20.0);
+                    double target = Math.Max(AgcMinGain, Math.Min(_agcMaxGain, _agcTarget / _agcEnvelope));
+                    double slew = Math.Pow(10.0, _agcSlewDbPerSec * frameSec / 20.0);
                     if (target > _agcGain) _agcGain = Math.Min(target, _agcGain * slew);
                     else _agcGain = Math.Max(target, _agcGain / slew);
                 }

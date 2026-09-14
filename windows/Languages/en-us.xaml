@@ -24,6 +24,13 @@
     <s:String x:Key="captureModeEvent">Event-driven (100ms)</s:String>
     <s:String x:Key="captureModeLowLatency">Low latency (event 20ms)</s:String>
     <s:String x:Key="captureModeCompatible">Compatible (poll 200ms)</s:String>
+    <s:String x:Key="captureProfile">Profile: </s:String>
+    <s:String x:Key="captureProfileTip">Auto-selects parameters for the sound driver (Dolby/SmartAudio DSPs get conservative loudness handling, SmartAudio also defaults to event-driven capture); set manually if detection is wrong</s:String>
+    <s:String x:Key="profileAuto">Auto detect</s:String>
+    <s:String x:Key="profileGeneric">Generic</s:String>
+    <s:String x:Key="profileRealtek">Realtek stock</s:String>
+    <s:String x:Key="profileDolby">Dolby</s:String>
+    <s:String x:Key="profileSmartAudio">SmartAudio/MaxxAudio</s:String>
     <s:String x:Key="captureError">Audio capture failed and could not auto-recover; try switching capture mode</s:String>
     <s:String x:Key="captureDeviceLost">Audio device disconnected; playback resumes when it is reconnected</s:String>
     <s:String x:Key="captureDeviceChanged">System default audio device changed; if silent, reselect the audio device</s:String>

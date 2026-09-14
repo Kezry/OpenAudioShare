@@ -67,10 +67,15 @@
             </StackPanel>
             <StackPanel Orientation="Horizontal" Margin="0 5 0 0">
                 <Label Margin="0" Content="{DynamicResource captureMode}" VerticalAlignment="Bottom" Padding="0"/>
-                <ComboBox Height="30" Width="220" Margin="5 0 0 0" VerticalAlignment="Center" Padding="6 6 0 6"
+                <ComboBox Height="30" Width="120" Margin="5 0 0 0" VerticalAlignment="Center" Padding="6 6 0 6"
                           ItemsSource="{Binding CaptureModes}" SelectedValuePath="Key" DisplayMemberPath="Value"
                           SelectedValue="{Binding CaptureMode, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                           ToolTip="{DynamicResource captureModeTip}"/>
+                <Label Margin="10 0 0 0" Content="{DynamicResource captureProfile}" VerticalAlignment="Bottom" Padding="0"/>
+                <ComboBox Height="30" Width="150" Margin="5 0 0 0" VerticalAlignment="Center" Padding="6 6 0 6"
+                          ItemsSource="{Binding CaptureProfiles}" SelectedValuePath="Key" DisplayMemberPath="Value"
+                          SelectedValue="{Binding CaptureProfile, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                          ToolTip="{DynamicResource captureProfileTip}"/>
             </StackPanel>
             <Grid Width="400" Margin="0 5 0 0">
                 <StackPanel>

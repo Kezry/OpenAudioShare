@@ -12,6 +12,7 @@ AudioShare is an application that allows you to transfer real-time sound from yo
 + Multi device support: Supports multiple Android devices to connect simultaneously, and can play different sounds according to different channels.
 + Multi-channel support: Captures audio in the actual channel layout of the system output device (2.0/2.1/5.1/7.1, etc.). Each playback device can be assigned any channel (front left/right, center, LFE, surround, back) to build a distributed surround system.
 + Auto volume: When enabled, capture loudness is normalized to the same level, solving volume differences between PCs.
++ Driver profiles: Detects Realtek stock, Dolby, Lenovo SmartAudio (Waves MaxxAudio) and other sound drivers and picks matching parameters; can also be switched manually.
 + LAN device discovery: Playback devices on the LAN are discovered automatically at startup in Wi-Fi mode, and can also be found instantly via the "Search Devices" button.
 + Multi-device sync: Network latency is measured per device and compensated automatically; playback is re-aligned on every track change, with a manual "Audio Sync" button for immediate correction.
 + Two connection methods: supports USB data cable and Wi Fi network connection.
@@ -78,6 +79,17 @@ Switching the capture mode does not disconnect playback devices; audio resumes a
 ### Auto Volume
 
 The mix level differs between PCs (per-app mixer volumes, driver enhancements and source loudness all play a part), so even at 100% system volume the streamed audio may be too loud or too quiet. With the "Auto volume" switch on the Windows side enabled, the app measures the capture level in real time and converges its gain to a fixed loudness (adapting within a few seconds), so all PCs play at about the same volume. The gain slider still works as a manual trim on top of the automatic adjustment.
+
+### Driver Profiles
+
+Brand PCs ship different sound driver stacks (Lenovo SmartAudio / Waves MaxxAudio, Dolby, stock Realtek), each shaping the loopback signal differently. With "Auto detect" (the default), the app fingerprints the machine from driver descriptions, services and installed programs, then picks matching parameters:
+
++ Dolby stacks already loudness-normalize and limit, so Auto volume uses conservative parameters (low gain ceiling, slow convergence) to avoid audible double-compression "pumping";
++ SmartAudio / MaxxAudio stacks get the same conservative loudness handling, and default to event-driven capture until you pick a capture mode yourself (poll sync stutters more on these drivers);
++ Stock Realtek mixes run quiet, so the loudness target is slightly hotter;
++ unrecognized machines use generic parameters.
+
+If detection is wrong, force a profile in the "Profile" dropdown (Auto detect / Generic / Realtek / Dolby / SmartAudio); it applies immediately.
 
 ### Phicomm R1 atmosphere light
 
