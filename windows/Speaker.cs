@@ -34,23 +34,47 @@ namespace AudioShare
         public event PropertyChangedEventHandler PropertyChanged;
         public event EventHandler<Speaker> Remove;
         public event EventHandler<ConnectStatus> ConnectStatusChanged;
-        private static readonly ObservableCollection<NamePair> _channels = new ObservableCollection<NamePair>();
+        private static readonly Dictionary<ChannelMode, ObservableCollection<NamePair>> _channelOptions = new Dictionary<ChannelMode, ObservableCollection<NamePair>>();
+        private static ChannelMode _channelMode = ChannelMode.Stereo;
         private static readonly byte[] TCP_HEAD = Encoding.Default.GetBytes("picapico-audio-share");
         private static readonly string REMOTE_SOCKET = "localabstract:picapico-audio-share";
 
-        static Speaker()
+        public static void SetChannelMode(ChannelMode mode)
         {
-            _channels.Add(new NamePair(AudioChannel.Stereo, "立体声"));
-            _channels.Add(new NamePair(AudioChannel.Left, "前置左"));
-            _channels.Add(new NamePair(AudioChannel.Right, "前置右"));
-            _channels.Add(new NamePair(AudioChannel.Center, "中置"));
-            _channels.Add(new NamePair(AudioChannel.Lfe, "重低音"));
-            _channels.Add(new NamePair(AudioChannel.SideLeft, "环绕左"));
-            _channels.Add(new NamePair(AudioChannel.SideRight, "环绕右"));
-            _channels.Add(new NamePair(AudioChannel.BackLeft, "后置左"));
-            _channels.Add(new NamePair(AudioChannel.BackRight, "后置右"));
-            _channels.Add(new NamePair(AudioChannel.BackCenter, "后置中"));
-            _channels.Add(new NamePair(AudioChannel.None, "禁用"));
+            _channelMode = mode;
+        }
+
+        private static string ChannelName(AudioChannel channel)
+        {
+            switch (channel)
+            {
+                case AudioChannel.Left: return "前置左";
+                case AudioChannel.Right: return "前置右";
+                case AudioChannel.Center: return "中置";
+                case AudioChannel.Lfe: return "重低音";
+                case AudioChannel.SideLeft: return "环绕左";
+                case AudioChannel.SideRight: return "环绕右";
+                case AudioChannel.BackLeft: return "后置左";
+                case AudioChannel.BackRight: return "后置右";
+                case AudioChannel.BackCenter: return "后置中";
+                default: return "立体声";
+            }
+        }
+
+        private static ObservableCollection<NamePair> ChannelsFor(ChannelMode mode)
+        {
+            if (!_channelOptions.TryGetValue(mode, out ObservableCollection<NamePair> channels))
+            {
+                channels = new ObservableCollection<NamePair>();
+                foreach (var channel in ChannelModeMap.SpeakerChannels(mode))
+                {
+                    channels.Add(new NamePair(channel, ChannelName(channel)));
+                }
+                channels.Insert(0, new NamePair(AudioChannel.Stereo, "立体声"));
+                channels.Add(new NamePair(AudioChannel.None, "禁用"));
+                _channelOptions[mode] = channels;
+            }
+            return channels;
         }
         private TcpClient tcpClient = null;
         readonly AdbClient adbClient = new AdbClient();
@@ -78,23 +102,40 @@ namespace AudioShare
         public bool Connected => _connectStatus == ConnectStatus.Connected;
         public bool Connecting => _connectStatus == ConnectStatus.Connecting;
         public bool UnConnected => _connectStatus != ConnectStatus.Connected;
-        public ObservableCollection<NamePair> Channels => _channels;
+        public ObservableCollection<NamePair> Channels => ChannelsFor(_channelMode);
         private AudioChannel _channel = AudioChannel.None;
         public NamePair ChannelSelected
         {
-            get => _channels.FirstOrDefault(m => m.Key == _channel);
+            get => ChannelsFor(_channelMode).FirstOrDefault(m => m.Key == _channel);
             set
             {
+                // WPF pushes null when the ItemsSource swap clears the selection
+                // before the binding re-reads the (already validated) channel.
+                if (value == null || value.Key == _channel) return;
                 _channel = value.Key;
+                _extractKey = -1;
                 OnPropertyChanged(nameof(ConnectEnabled));
             }
+        }
+
+        public void OnChannelModeChanged()
+        {
+            if (!ChannelModeMap.IsValid(_channelMode, _channel))
+            {
+                _channel = AudioChannel.Stereo;
+            }
+            _extractKey = -1;
+            _missingChannelLogged = AudioChannel.None;
+            OnPropertyChanged(nameof(Channels));
+            OnPropertyChanged(nameof(ChannelSelected));
+            OnPropertyChanged(nameof(ConnectEnabled));
         }
 
         public Speaker(Dispatcher dispatcher, string id, string name, AudioChannel channel, bool isUSB)
         {
             _id = id;
             _name = name;
-            _channel = channel;
+            _channel = ChannelModeMap.IsValid(_channelMode, channel) ? channel : AudioChannel.Stereo;
             _isUSB = isUSB;
             _dispatcher = dispatcher;
         }

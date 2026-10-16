@@ -3,7 +3,6 @@ using NAudio.CoreAudioApi.Interfaces;
 using NAudio.Wave;
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -70,6 +69,7 @@ namespace AudioShare
         private static CaptureProfile? _detectedProfile;
         private static int _channelCount = 2;
         private static int _channelMask = 0x3;
+        private static ChannelMode _channelMode = ChannelMode.Stereo;
         private static bool _wasSilent = true;
         private static float _gain = 1f;
         private static bool _autoGain;
@@ -374,98 +374,21 @@ namespace AudioShare
             }
         }
 
-        public static int DefaultMask(int channels)
+        // User-selected channel layout (2.0/2.1/5.1/7.1). It drives the capture
+        // format instead of the device mix format; WASAPI auto-converts whatever
+        // the system mixes into this channel count, so every channel offered by
+        // the mode maps to a real captured channel.
+        public static ChannelMode ChannelMode
         {
-            // Standard Microsoft channel order when the mask is unavailable.
-            switch (channels)
+            get => _channelMode;
+            set
             {
-                case 1: return 0x4;                                                     // FC
-                case 2: return 0x3;                                                     // FL FR
-                case 3: return 0x7;                                                     // FL FR FC
-                case 4: return 0x33;                                                    // FL FR BL BR
-                case 5: return 0x37;                                                    // FL FR FC BL BR
-                case 6: return 0x3F;                                                    // FL FR FC LFE BL BR
-                case 7: return 0x13F;                                                   // FL FR FC LFE BC BL BR
-                case 8: return 0x63F;                                                   // FL FR FC LFE BL BR SL SR
-                default:
-                    int mask = 0;
-                    for (int i = 0; i < channels; i++) mask |= 1 << i;
-                    return mask;
-            }
-        }
-
-        private static void ReadMixFormat()
-        {
-            _channelCount = 2;
-            _channelMask = 0x3;
-            if (_device == null) return;
-            try
-            {
-                using (var client = _device.AudioClient)
+                if ((int)value < 0 || (int)value > (int)ChannelMode.Ch71)
                 {
-                    var mix = client.MixFormat;
-                    if (mix != null && mix.Channels > 0 && mix.Channels <= 18)
-                    {
-                        _channelCount = mix.Channels;
-                    }
-                    int mask = ReadChannelMask(mix);
-                    if (IsValidChannelMask(mask, _channelCount))
-                    {
-                        _channelMask = mask;
-                    }
-                    else if (mask != 0)
-                    {
-                        Logger.Error($"driver reported malformed channel mask 0x{mask:X} for {_channelCount}ch, falling back to 0x{DefaultMask(_channelCount):X}");
-                    }
+                    value = ChannelMode.Stereo;
                 }
+                _channelMode = value;
             }
-            catch (Exception ex)
-            {
-                Logger.Error("read mix format error: " + ex.Message);
-            }
-            if (_channelMask == 0) _channelMask = DefaultMask(_channelCount);
-            Logger.Info($"capture format: {_sampleRate}Hz {_channelCount}ch mask=0x{_channelMask:X} mode={EffectiveCaptureMode} profile={EffectiveProfile}");
-        }
-
-        private static int ReadChannelMask(WaveFormat format)
-        {
-            // NAudio 2.x keeps dwChannelMask private; it sits at offset 20 in the
-            // serialized WAVEFORMATEXTENSIBLE structure.
-            try
-            {
-                if (format == null) return 0;
-                using (var ms = new MemoryStream())
-                using (var writer = new BinaryWriter(ms))
-                {
-                    format.Serialize(writer);
-                    var bytes = ms.ToArray();
-                    if (bytes.Length >= 24)
-                    {
-                        return BitConverter.ToInt32(bytes, 20);
-                    }
-                }
-            }
-            catch (Exception)
-            {
-            }
-            return 0;
-        }
-
-        private static bool IsValidChannelMask(int mask, int channels)
-        {
-            if (mask <= 0 || channels <= 0) return false;
-            // Bits above SPEAKER_TOP_BACK_RIGHT (0x20000) are reserved, and
-            // WAVEFORMATEXTENSIBLE requires exactly one set bit per channel.
-            // Some drivers violate both (e.g. a Realtek reporting 2ch with
-            // mask 0x200016); routing by such a mask mutes real channels.
-            if ((mask & ~0x3FFFF) != 0) return false;
-            int bits = 0;
-            while (mask != 0)
-            {
-                bits += mask & 1;
-                mask >>= 1;
-            }
-            return bits == channels;
         }
 
         public static void SetDevice(MMDevice device, int sampleRate, CaptureMode? mode = null, bool notifyStop = true)
@@ -503,7 +426,6 @@ namespace AudioShare
                 {
                     return;
                 }
-                ReadMixFormat();
                 RebuildCapture();
                 _captureRestarts = 0;
                 _deviceRecoveries = 0;
@@ -515,6 +437,9 @@ namespace AudioShare
         private static void RebuildCapture()
         {
             ResolveProfileParams();
+            _channelCount = ChannelModeMap.CaptureChannels(ChannelMode);
+            _channelMask = ChannelModeMap.CaptureMask(ChannelMode);
+            Logger.Info($"capture format: {ChannelModeMap.Name(ChannelMode)} {_sampleRate}Hz {_channelCount}ch mask=0x{_channelMask:X} mode={EffectiveCaptureMode} profile={EffectiveProfile}");
             _capture = CreateCapture(_device);
             _capture.WaveFormat = new WaveFormat(_sampleRate, 16, _channelCount);
             _capture.DataAvailable += SendAudioData;
@@ -651,7 +576,6 @@ namespace AudioShare
                 _capture?.Dispose();
                 _capture = null;
                 Logger.Info($"capture device returned ({reason}), restarting capture");
-                ReadMixFormat();
                 RebuildCapture();
                 _captureRestarts = 0;
             }

@@ -10,7 +10,7 @@ AudioShare is an application that allows you to transfer real-time sound from yo
 
 + Real time transmission: Real time transmission of sound from Windows computers to Android devices with low latency and high sound quality.
 + Multi device support: Supports multiple Android devices to connect simultaneously, and can play different sounds according to different channels.
-+ Multi-channel support: Captures audio in the actual channel layout of the system output device (2.0/2.1/5.1/7.1, etc.). Each playback device can be assigned any channel (front left/right, center, LFE, surround, back) to build a distributed surround system.
++ Multi-channel support: Pick a channel mode first (Stereo / 2.1 / 5.1 / 7.1); audio is captured and distributed in that mode, and each playback device can only be assigned a channel it contains (front left/right, center, LFE, surround, back) to build a distributed surround system.
 + Auto volume: When enabled, capture loudness is normalized to the same level, solving volume differences between PCs.
 + Driver profiles: Detects Realtek stock, Dolby, Lenovo SmartAudio (Waves MaxxAudio) and other sound drivers and picks matching parameters; can also be switched manually.
 + LAN device discovery: Playback devices on the LAN are discovered automatically at startup in Wi-Fi mode, and can also be found instantly via the "Search Devices" button.
@@ -57,9 +57,10 @@ Enable the "Auto Connect" toggle to automatically connect all saved devices when
 
 ### Multi-channel Output (2.1/5.1/7.1)
 
-1. Configure the output device to the desired channel layout (e.g. 5.1, 7.1) in the Windows sound settings; the app captures audio in the device's actual channel layout.
-2. In the Windows device list, choose which channel each Android playback device plays: Stereo, Front Left/Right, Center, LFE, Surround Left/Right, Back Left/Right/Center.
-3. For example, when watching a 5.1 movie, four devices can act as Center, Front Left, Front Right and LFE to form a distributed home theater.
+1. First pick the layout under "Channel mode" in the Windows app: Stereo (left, right), 2.1 (left, right, LFE), 5.1 or 7.1. Audio is captured in the selected mode and no Windows sound settings change is required; configuring the system output device to the same layout gives the best channel separation for multi-channel content.
+2. Then choose which channel each Android playback device plays in the device list; the dropdown only offers channels that exist in the current mode (Stereo, Front Left/Right, Center, LFE, Back Left/Right, plus Surround Left/Right in 7.1).
+3. For example, with the 5.1 mode selected, four devices can act as Center, Front Left, Front Right and LFE while watching a 5.1 movie to form a distributed home theater.
+4. Switching the channel mode rebuilds the capture live without dropping connected devices; channels that no longer exist in the new mode are reset to Stereo.
 
 ### Audio Sync
 

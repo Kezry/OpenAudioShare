@@ -16,6 +16,7 @@ using System.Windows;
 using System.Windows.Media;
 using System.Windows.Threading;
 using DeviceState = NAudio.CoreAudioApi.DeviceState;
+using ChannelModePair = System.Collections.Generic.KeyValuePair<AudioShare.ChannelMode, string>;
 using NamePair = System.Collections.Generic.KeyValuePair<string, string>;
 using SampleRatePair = System.Collections.Generic.KeyValuePair<int, string>;
 
@@ -32,6 +33,8 @@ namespace AudioShare
         private CancellationTokenSource _audioChangeSyncCancel;
         public Model()
         {
+            Speaker.SetChannelMode(_settings.ChannelMode);
+            AudioManager.ChannelMode = _settings.ChannelMode;
             _dispatcher = Dispatcher.CurrentDispatcher;
             AudioManager.Gain = _settings.Gain / 100f;
             AudioManager.AutoGain = _settings.AutoGain;
@@ -253,6 +256,43 @@ namespace AudioShare
             new KeyValuePair<CaptureProfile, string>(CaptureProfile.Dolby, Languages.Language.GetLanguageText("profileDolby")),
             new KeyValuePair<CaptureProfile, string>(CaptureProfile.SmartAudio, Languages.Language.GetLanguageText("profileSmartAudio")),
         };
+        public ObservableCollection<ChannelModePair> ChannelModes => new ObservableCollection<ChannelModePair>()
+        {
+            new ChannelModePair(ChannelMode.Stereo, ChannelModeMap.Name(ChannelMode.Stereo)),
+            new ChannelModePair(ChannelMode.Ch21, ChannelModeMap.Name(ChannelMode.Ch21)),
+            new ChannelModePair(ChannelMode.Ch51, ChannelModeMap.Name(ChannelMode.Ch51)),
+            new ChannelModePair(ChannelMode.Ch71, ChannelModeMap.Name(ChannelMode.Ch71)),
+        };
+        public ChannelMode ChannelMode => _settings.ChannelMode;
+        public string ChannelModeHint => ChannelModeMap.Hint(_settings.ChannelMode);
+        public ChannelModePair ChannelModeSelected
+        {
+            get => ChannelModes.FirstOrDefault(m => m.Key == _settings.ChannelMode);
+            set
+            {
+                if (value == null || value.Key == _settings.ChannelMode) return;
+                _settings.ChannelMode = value.Key;
+                Speaker.SetChannelMode(value.Key);
+                foreach (var speaker in Speakers)
+                {
+                    speaker.OnChannelModeChanged();
+                }
+                ResetSpeakerSetting();
+                _settings.Save();
+                OnPropertyChanged(nameof(ChannelModeSelected));
+                OnPropertyChanged(nameof(ChannelModeHint));
+                // Sync the static first so the layout also sticks when no device
+                // is selected yet, then live-rebuild the capture without
+                // dropping connected speakers (they re-resolve channels from
+                // the new layout on the next frame).
+                AudioManager.ChannelMode = value.Key;
+                var mDevice = _audioDevices.FirstOrDefault(m => m.ID == _settings.AudioId);
+                if (mDevice != null)
+                {
+                    AudioManager.SetDevice(mDevice, _settings.SampleRate, notifyStop: false);
+                }
+            }
+        }
         public ImageSource Icon => Utils.AppIcon;
         public string Title => Languages.Language.GetLanguageText("title") + " " + Utils.VersionName;
         public void UpdateTitle()

@@ -7,7 +7,7 @@
         xmlns:local="clr-namespace:AudioShare"
         mc:Ignorable="d" WindowStartupLocation="CenterScreen"
         d:DataContext="{d:DesignInstance Type=local:Model}"
-        Title="{DynamicResource title}" Height="436" Width="500" ResizeMode="NoResize"
+        Title="{DynamicResource title}" Height="491" Width="500" ResizeMode="NoResize"
              ExtendsContentIntoTitleBar="True"
              WindowCornerPreference="Round">
     <ui:UiWindow.Resources>
@@ -76,6 +76,14 @@
                           ItemsSource="{Binding CaptureProfiles}" SelectedValuePath="Key" DisplayMemberPath="Value"
                           SelectedValue="{Binding CaptureProfile, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                           ToolTip="{DynamicResource captureProfileTip}"/>
+            </StackPanel>
+            <Label Content="{DynamicResource channelMode}" HorizontalContentAlignment="Left" Padding="0 5 0 5"/>
+            <StackPanel Height="30" Width="400" Orientation="Horizontal">
+                <ComboBox Height="30" Width="130" ItemsSource="{Binding ChannelModes}" VerticalContentAlignment="Center"
+                      SelectedValue="{Binding ChannelModeSelected, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                      DisplayMemberPath="Value" Padding="10 6 10 6"/>
+                <TextBlock Text="{Binding ChannelModeHint}" Foreground="Gray" FontSize="11"
+                           VerticalAlignment="Center" Margin="10 0 0 0" TextTrimming="CharacterEllipsis"/>
             </StackPanel>
             <Grid Width="400" Margin="0 5 0 0">
                 <StackPanel>

@@ -11,6 +11,7 @@
     <s:String x:Key="unconnected">未连接</s:String>
     <s:String x:Key="disconnected">已断开</s:String>
     <s:String x:Key="audioDeviceSelection">请选择音频设备：</s:String>
+    <s:String x:Key="channelMode">声道模式：</s:String>
     <s:String x:Key="refresh">刷新</s:String>
     <s:String x:Key="audioPlaybackDevice">音频播放设备：</s:String>
     <s:String x:Key="volume">音量：</s:String>

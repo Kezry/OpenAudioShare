@@ -2,6 +2,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 
 namespace AudioShare
 {
@@ -20,6 +21,7 @@ namespace AudioShare
         public string AudioId { get; set; } = string.Empty;
         public List<Device> AdbDevices { get; set; } = new List<Device>();
         public List<Device> IPDevices { get; set; } = new List<Device>();
+        public ChannelMode ChannelMode { get; set; } = ChannelMode.Stereo;
         public int SampleRate { get; set; } = 48000;
         public int Volume { get; set; } = 50;
         public int Gain { get; set; } = 100;
@@ -31,6 +33,7 @@ namespace AudioShare
         public bool VolumeFollowSystem { get; set; } = true;
         public bool Acrylic { get; set; } = true;
         public bool AutoConnect { get; set; } = false;
+        public bool ChannelModeMigrated { get; set; } = false;
 
         private static readonly string _loadPath;
         private static readonly Settings _settings;
@@ -50,6 +53,33 @@ namespace AudioShare
                 Logger.Error("load settings failed, using defaults: " + ex.Message);
             }
             if (_settings == null) _settings = new Settings();
+            _settings.MigrateChannelMode();
+        }
+
+        private void MigrateChannelMode()
+        {
+            // Configs saved before the channel-mode selector existed carry only
+            // per-device channels; infer the closest mode once so those setups
+            // keep working after the upgrade.
+            if (ChannelModeMigrated) return;
+            ChannelModeMigrated = true;
+            var channels = AdbDevices.Select(d => d.Channel).Concat(IPDevices.Select(d => d.Channel));
+            ChannelMode mode = ChannelMode.Stereo;
+            foreach (var channel in channels)
+            {
+                if (channel == AudioChannel.SideLeft || channel == AudioChannel.SideRight)
+                {
+                    mode = ChannelMode.Ch71;
+                    break;
+                }
+                if (channel == AudioChannel.Center || channel == AudioChannel.Lfe ||
+                    channel == AudioChannel.BackLeft || channel == AudioChannel.BackRight ||
+                    channel == AudioChannel.BackCenter)
+                {
+                    mode = ChannelMode.Ch51;
+                }
+            }
+            ChannelMode = mode;
         }
 
         private Settings() { }

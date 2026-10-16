@@ -11,6 +11,7 @@
     <s:String x:Key="unconnected">Not Connected</s:String>
     <s:String x:Key="disconnected">disconnected</s:String>
     <s:String x:Key="audioDeviceSelection">Please select an audio device: </s:String>
+    <s:String x:Key="channelMode">Channel mode: </s:String>
     <s:String x:Key="refresh">Refresh</s:String>
     <s:String x:Key="audioPlaybackDevice">Audio playback device: </s:String>
     <s:String x:Key="volume">Volume: </s:String>
