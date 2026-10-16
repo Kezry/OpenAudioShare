@@ -109,9 +109,9 @@ namespace AudioShare
             get => ChannelsFor(_channelMode).FirstOrDefault(m => m.Key == _channel);
             set
             {
-                // WPF pushes null when the ItemsSource swap clears the selection
-                // before the binding re-reads the (already validated) channel.
-                if (value == null || value.Key == _channel) return;
+                // NamePair is a struct, so a cleared WPF selection (null) never
+                // reaches this setter; no null guard is possible or needed.
+                if (value.Key == _channel) return;
                 _channel = value.Key;
                 _extractKey = -1;
                 OnPropertyChanged(nameof(ConnectEnabled));

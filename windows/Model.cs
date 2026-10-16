@@ -270,7 +270,9 @@ namespace AudioShare
             get => ChannelModes.FirstOrDefault(m => m.Key == _settings.ChannelMode);
             set
             {
-                if (value == null || value.Key == _settings.ChannelMode) return;
+                // ChannelModePair is a struct; a null WPF push fails conversion
+                // before reaching here, so no null guard is needed.
+                if (value.Key == _settings.ChannelMode) return;
                 _settings.ChannelMode = value.Key;
                 Speaker.SetChannelMode(value.Key);
                 foreach (var speaker in Speakers)
