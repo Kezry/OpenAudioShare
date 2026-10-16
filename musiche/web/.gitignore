@@ -1,6 +1,5 @@
 node_modules
 dist
-yarn.lock
 /*.d.ts
 env.d.ts
 *.log

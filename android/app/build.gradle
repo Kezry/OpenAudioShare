@@ -26,7 +26,7 @@ android {
         applicationId "com.picapico.audioshare"
         minSdk 21
         targetSdk 35
-        versionCode 212
+        versionCode 2012
         versionName "2.0.12"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
