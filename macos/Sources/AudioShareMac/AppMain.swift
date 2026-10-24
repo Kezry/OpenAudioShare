@@ -23,7 +23,9 @@ struct AudioShareMacApp {
         let delegate = AppDelegate()
         Self.keepAlive = delegate
         app.delegate = delegate
-        app.setActivationPolicy(.regular)
+        // Menu-bar-only app: no Dock icon and no Dock indicator while the
+        // window is closed. The status item in AppDelegate keeps it reachable.
+        app.setActivationPolicy(.accessory)
         app.run()
     }
 
