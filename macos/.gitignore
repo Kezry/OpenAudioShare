@@ -1,0 +1,11 @@
+# macOS build artifacts
+.build/
+build/
+.DS_Store
+
+# Local test audio
+test-assets/tone.wav
+
+# Downloaded platform-tools / Android APK (use scripts/fetch-resources.sh)
+Resources/adb
+Resources/AudioShare.apk

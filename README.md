@@ -6,6 +6,8 @@
 
 AudioShare 是一款可以让您将 Windows 电脑的声音实时传输到安卓设备播放的应用。它支持多台安卓设备同时连接，并可以根据不同声道播放不同的声音。您可以通过 USB 数据线或 Wi-Fi 网络连接您的设备。
 
+> **macOS 版（新增）**：仓库新增原生 macOS 客户端（SwiftUI + Core Audio Tap），功能与 Windows 版对齐，完全兼容现有 Android APK。详见 [`macos/README.md`](macos/README.md)。
+
 ## 功能特色
 
 + 实时传输: 将 Windows 电脑的声音实时传输到安卓设备，延迟低，音质高。

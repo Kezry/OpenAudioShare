@@ -6,6 +6,8 @@ English | [简体中文](./README.md)
 
 AudioShare is an application that allows you to transfer real-time sound from your Windows computer to Android devices for playback. It supports multiple Android devices to connect simultaneously and can play different sounds according to different channels. You can connect your device through a USB data cable or Wi Fi network.
 
+> **macOS client (new)**: a native macOS client (SwiftUI + Core Audio Tap) with feature parity and full compatibility with the existing Android APK. See [`macos/README.md`](macos/README.md).
+
 ## Features
 
 + Real time transmission: Real time transmission of sound from Windows computers to Android devices with low latency and high sound quality.
